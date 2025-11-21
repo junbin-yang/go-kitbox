@@ -1,0 +1,10 @@
+server:
+  port: 8080
+  host: "0.0.0.0"
+  timeout: 30
+logger:
+  level: "info"
+  path: "./logs/app.log"
+  rotate: true
+database:
+  dsn: "user:pass@tcp(127.0.0.1:3306)/dbname?charset=utf8"
