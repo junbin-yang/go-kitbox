@@ -1,0 +1,25 @@
+server:
+  name: "demo-server"
+  version: "1.0.0"
+  http:
+    addr: ":8080"
+    read_timeout: 30s
+    write_timeout: 30s
+    idle_timeout: 60s
+  shutdown_timeout: 30s
+
+logger:
+  level: "info"
+  output: "stdout"
+  encoding: "json"
+  enable_caller: true
+  enable_stacktrace: false
+  max_size: 100
+  max_backups: 3
+  max_age: 7
+  compress: true
+
+# 业务配置
+business:
+  cache_ttl: 300s
+  max_workers: 10
