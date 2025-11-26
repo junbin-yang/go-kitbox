@@ -276,6 +276,83 @@ func main() {
 }
 ```
 
+## 使用场景选择
+
+### 何时使用 TaskPool
+
+适用于**大量短生命周期任务**的场景：
+
+-   **HTTP 请求处理** - 每个请求是一个独立任务
+-   **消息队列消费** - 每条消息是一个任务
+-   **批量数据处理** - 处理大量数据项，每项是一个任务
+-   **定时任务执行** - 周期性产生的大量任务
+-   **并发 API 调用** - 需要并发调用多个外部 API
+
+**特点：**
+
+-   任务数量多
+-   任务执行时间短（毫秒到秒级）
+-   需要控制并发数
+-   需要任务优先级
+-   需要监控任务执行情况
+
+### 何时使用 Lifecycle AddWorker
+
+适用于**少量长生命周期服务**的场景：
+
+-   **HTTP Server** - 持续监听端口
+-   **gRPC Server** - 长期运行的服务
+-   **消息队列订阅者** - 持续监听消息
+-   **定时调度器** - 后台定时触发任务
+-   **监控服务** - 持续收集指标
+
+**特点：**
+
+-   Worker 数量少
+-   生命周期长（与应用同生命周期）
+-   每个 Worker 有独立职责
+-   需要统一的启动/关闭管理
+
+### 组合使用
+
+最佳实践是**组合使用**两者：
+
+```go
+lm := lifecycle.NewManager()
+
+// 1. TaskPool 作为 Worker 管理
+pool := taskpool.New(...)
+lm.AddWorker("taskpool", func(ctx context.Context) error {
+    <-ctx.Done()
+    return pool.Shutdown(ctx)
+})
+
+// 2. HTTP Server 作为 Worker
+lm.AddWorker("http-server", func(ctx context.Context) error {
+    server := &http.Server{Addr: ":8080"}
+    go server.ListenAndServe()
+    <-ctx.Done()
+    return server.Shutdown(ctx)
+})
+
+// 3. 消息消费者作为 Worker，使用 TaskPool 处理消息
+lm.AddWorker("consumer", func(ctx context.Context) error {
+    for {
+        select {
+        case <-ctx.Done():
+            return nil
+        case msg := <-msgChan:
+            // 将消息处理提交到 TaskPool
+            pool.Submit(func(ctx context.Context) error {
+                return processMessage(msg)
+            })
+        }
+    }
+})
+
+lm.Run()
+```
+
 ## API 参考
 
 ### 配置选项
