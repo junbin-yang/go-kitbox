@@ -18,6 +18,7 @@ go get github.com/junbin-yang/go-kitbox
 | [timer](pkg/timer/)           | 定时器管理，支持防抖、节流、重试等功能      | [📖 文档](pkg/timer/README.md)      | [💡 示例](examples/timer_example/)     |
 | [statemachine](pkg/statemachine/) | 状态机工具库，支持FSM/HSM/并发/异步状态机 | [📖 文档](pkg/statemachine/README.md) | [💡 示例](examples/statemachine_example/) |
 | [lifecycle](pkg/lifecycle/)   | 应用生命周期管理，支持优雅退出和协程管理    | [📖 文档](pkg/lifecycle/README.md)  | [💡 示例](examples/lifecycle_example/) |
+| [taskpool](pkg/taskpool/)     | 高性能任务协程池，支持优先级队列和动态扩缩容 | [📖 文档](pkg/taskpool/README.md)   | [💡 示例](examples/taskpool_example/)  |
 | [netconn](pkg/netconn/)       | 统一网络连接库，支持 TCP 和 UDP（FILLP）    | [📖 文档](pkg/netconn/README.md)    | [💡 示例](examples/netconn_example/)   |
 | [fillp](pkg/fillp/)           | 基于 UDP 的可靠传输协议（类 TCP）           | [📖 文档](pkg/fillp/README.md)      | [💡 示例](examples/fillp_example/)     |
 | [congestion](pkg/congestion/) | 网络拥塞控制算法（CUBIC/BBR/Reno/Vegas）    | [📖 文档](pkg/congestion/README.md) | [💡 示例](examples/fillp_example/)     |

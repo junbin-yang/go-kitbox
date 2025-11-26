@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test -v -run TestTaskPool_Submit)",
+      "Bash(go test -v)",
+      "Bash(go run main.go)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
