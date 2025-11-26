@@ -21,6 +21,7 @@ vendor/
 go.work
 
 # IDE
+.claude/
 .idea/
 .vscode/
 *.swp
