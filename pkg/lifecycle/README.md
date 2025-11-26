@@ -4,13 +4,12 @@
 
 ## 特性
 
-- **信号管理** - 内置退出信号监听（SIGINT/SIGTERM）和手动触发
-- **协程管理** - 统一管理应用内所有协程，自动传播 Context
-- **钩子系统** - 支持启动、退出、协程生命周期等钩子
-- **超时控制** - 防止协程阻塞退出过程
-- **优雅退出** - 按正确顺序关闭所有协程
-- **错误处理** - 协程错误收集和传播
-- **并发安全** - 所有操作都是线程安全的
+-   **协程管理** - 统一管理应用内所有协程，支持动态添加，自动清理，独立 Context 可灵活控制
+-   **信号管理** - 内置退出信号监听（SIGINT/SIGTERM）和手动触发
+-   **钩子系统** - 支持启动、退出、协程生命周期等钩子
+-   **优雅退出** - 按正确顺序关闭所有协程，带超时控制
+-   **错误处理** - 协程错误收集和传播
+-   **并发安全** - 所有操作都是线程安全的
 
 ## 安装
 
@@ -86,8 +85,8 @@ manager.AddWorker("task2",
     }),
 )
 
-// 移除协程
-manager.RemoveWorker("task1")
+// 停止指定协程
+manager.StopWorker("task1")
 ```
 
 ### 2. 信号监听
@@ -169,24 +168,55 @@ manager.AddWorker("worker", func(ctx context.Context) error {
 manager.Run()
 ```
 
-### 5. Context 管理
+### 5. 独立 Context 管理
 
-自动传播 Context，支持自定义根 Context。
+每个协程拥有独立的 Context，可单独控制。
 
 ```go
-// 使用自定义根 Context
-rootCtx := context.WithValue(context.Background(), "key", "value")
+manager := lifecycle.NewManager()
 
-manager := lifecycle.NewManager(
-    lifecycle.WithContext(rootCtx),
-)
-
-manager.AddWorker("worker", func(ctx context.Context) error {
-    // ctx 继承自 rootCtx
-    value := ctx.Value("key")
-    fmt.Println(value) // 输出: value
+// 添加长期运行的协程
+manager.AddWorker("worker1", func(ctx context.Context) error {
+    <-ctx.Done()
     return nil
 })
+
+// 添加另一个协程
+manager.AddWorker("worker2", func(ctx context.Context) error {
+    <-ctx.Done()
+    return nil
+})
+
+// 只停止 worker1，worker2 继续运行
+manager.StopWorker("worker1")
+```
+
+### 6. 动态协程管理
+
+支持运行时动态添加协程，临时协程自动清理。
+
+```go
+manager := lifecycle.NewManager()
+
+// 添加主服务协程
+manager.AddWorker("main-service", func(ctx context.Context) error {
+    // 业务模块持有 manager 引用，可随时添加临时任务
+    handleJobs(manager)
+    <-ctx.Done()
+    return nil
+})
+
+manager.Run()
+
+// 业务模块中动态添加临时任务
+func handleJobs(mgr *lifecycle.Manager) {
+    mgr.AddWorker("task-1", func(ctx context.Context) error {
+        return nil  // 完成后自动清理
+    })
+    mgr.AddWorker("task-2", func(ctx context.Context) error {
+        return nil  // 完成后自动清理
+    })
+}
 ```
 
 ## 退出机制
@@ -196,44 +226,49 @@ manager.AddWorker("worker", func(ctx context.Context) error {
 协程可以通过两种方式退出:
 
 1. **Context 取消** - 适用于普通协程
-   ```go
-   manager.AddWorker("worker", func(ctx context.Context) error {
-       for {
-           select {
-           case <-ctx.Done():
-               // Context 被取消，执行清理并退出
-               return nil
-           case work := <-workChan:
-               process(work)
-           }
-       }
-   })
-   ```
+
+    ```go
+    manager.AddWorker("worker", func(ctx context.Context) error {
+        for {
+            select {
+            case <-ctx.Done():
+                // Context 被取消，执行清理并退出
+                return nil
+            case work := <-workChan:
+                process(work)
+            }
+        }
+    })
+    ```
 
 2. **StopFunc** - 适用于需要主动停止的服务（如 HTTP 服务器）
-   ```go
-   manager.AddWorker("http-server",
-       func(ctx context.Context) error {
-           // 阻塞式运行
-           return server.ListenAndServe()
-       },
-       lifecycle.WithStopFunc(func(ctx context.Context) error {
-           // 主动停止服务
-           return server.Shutdown(ctx)
-       }),
-   )
-   ```
+    ```go
+    manager.AddWorker("http-server",
+        func(ctx context.Context) error {
+            // 阻塞式运行
+            return server.ListenAndServe()
+        },
+        lifecycle.WithStopFunc(func(ctx context.Context) error {
+            // 主动停止服务
+            return server.Shutdown(ctx)
+        }),
+    )
+    ```
 
 ### 退出流程
 
 1. 收到退出信号或手动调用 `Shutdown()`
-2. 取消根 Context，通知所有协程
+2. 取消所有协程的独立 Context，通知所有协程
 3. **按 LIFO 顺序调用所有 StopFunc**（主动停止服务）
 4. 等待所有协程退出（带超时）
 5. 调用 OnShutdown 钩子
 6. 返回错误（如果有）
 
-**重要**: StopFunc 会在等待协程退出之前调用，确保阻塞式服务能够立即开始关闭流程。
+**重要**:
+
+-   每个协程拥有独立的 Context，可通过 `StopWorker()` 单独停止
+-   StopFunc 会在等待协程退出之前调用，确保阻塞式服务能够立即开始关闭流程
+-   临时协程执行完毕后自动从管理器中清理
 
 ## 应用场景
 
@@ -347,85 +382,89 @@ manager.Run()
 
 ### Manager 方法
 
-| 方法 | 说明 |
-|------|------|
-| `NewManager(opts ...Option)` | 创建生命周期管理器 |
-| `AddWorker(name, runFunc, opts...)` | 添加协程 |
-| `RemoveWorker(name)` | 移除协程 |
-| `OnStartup(fn)` | 注册启动钩子 |
-| `OnWorkerStart(fn)` | 注册协程启动钩子 |
-| `OnWorkerExit(fn)` | 注册协程退出钩子 |
-| `OnShutdown(fn)` | 注册退出钩子 |
-| `OnTimeout(fn)` | 注册超时钩子 |
-| `Run()` | 启动管理器并等待退出 |
-| `Shutdown()` | 手动触发退出 |
+| 方法                                | 说明                           |
+| ----------------------------------- | ------------------------------ |
+| `NewManager(opts ...Option)`        | 创建生命周期管理器             |
+| `AddWorker(name, runFunc, opts...)` | 添加协程（支持运行时动态添加） |
+| `StopWorker(name)`                  | 停止指定协程                   |
+| `OnStartup(fn)`                     | 注册启动钩子                   |
+| `OnWorkerStart(fn)`                 | 注册协程启动钩子               |
+| `OnWorkerExit(fn)`                  | 注册协程退出钩子               |
+| `OnShutdown(fn)`                    | 注册退出钩子                   |
+| `OnTimeout(fn)`                     | 注册超时钩子                   |
+| `Run()`                             | 启动管理器并等待退出           |
+| `Shutdown()`                        | 手动触发退出                   |
 
 ### 配置选项
 
-| 选项 | 说明 |
-|------|------|
-| `WithSignals(signals...)` | 设置监听的信号 |
+| 选项                           | 说明             |
+| ------------------------------ | ---------------- |
+| `WithSignals(signals...)`      | 设置监听的信号   |
 | `WithShutdownTimeout(timeout)` | 设置退出超时时间 |
-| `WithContext(ctx)` | 设置根 Context |
+| `WithContext(ctx)`             | 设置根 Context   |
 
 ### Worker 选项
 
-| 选项 | 说明 |
-|------|------|
+| 选项               | 说明         |
+| ------------------ | ------------ |
 | `WithStopFunc(fn)` | 设置停止函数 |
 
 ## 最佳实践
 
 1. **合理设置超时时间**
-   ```go
-   manager := lifecycle.NewManager(
-       lifecycle.WithShutdownTimeout(30 * time.Second),
-   )
-   ```
+
+    ```go
+    manager := lifecycle.NewManager(
+        lifecycle.WithShutdownTimeout(30 * time.Second),
+    )
+    ```
 
 2. **使用 StopFunc 清理资源**
-   ```go
-   manager.AddWorker("server", runFunc,
-       lifecycle.WithStopFunc(func(ctx context.Context) error {
-           return server.Shutdown(ctx)
-       }),
-   )
-   ```
+
+    ```go
+    manager.AddWorker("server", runFunc,
+        lifecycle.WithStopFunc(func(ctx context.Context) error {
+            return server.Shutdown(ctx)
+        }),
+    )
+    ```
 
 3. **监听 Context 取消信号**
-   ```go
-   manager.AddWorker("worker", func(ctx context.Context) error {
-       for {
-           select {
-           case <-ctx.Done():
-               return nil // 正常退出
-           case work := <-workChan:
-               process(work)
-           }
-       }
-   })
-   ```
+
+    ```go
+    manager.AddWorker("worker", func(ctx context.Context) error {
+        for {
+            select {
+            case <-ctx.Done():
+                return nil // 正常退出
+            case work := <-workChan:
+                process(work)
+            }
+        }
+    })
+    ```
 
 4. **使用钩子进行资源管理**
-   ```go
-   manager.OnStartup(func(ctx context.Context) error {
-       return initResources()
-   })
 
-   manager.OnShutdown(func(ctx context.Context) error {
-       return cleanupResources()
-   })
-   ```
+    ```go
+    manager.OnStartup(func(ctx context.Context) error {
+        return initResources()
+    })
+
+    manager.OnShutdown(func(ctx context.Context) error {
+        return cleanupResources()
+    })
+    ```
 
 5. **错误处理**
-   ```go
-   manager.OnWorkerExit(func(name string, err error) {
-       if err != nil {
-           log.Printf("Worker %s failed: %v", name, err)
-           // 记录错误、发送告警等
-       }
-   })
-   ```
+    ```go
+    manager.OnWorkerExit(func(name string, err error) {
+        if err != nil {
+            log.Printf("Worker %s failed: %v", name, err)
+            // 记录错误、发送告警等
+        }
+    })
+    ```
 
 ## 许可证
 

@@ -27,19 +27,33 @@ func TestManager_AddWorker(t *testing.T) {
 	}
 }
 
-func TestManager_RemoveWorker(t *testing.T) {
-	m := NewManager()
+func TestManager_StopWorker(t *testing.T) {
+	m := NewManager(WithShutdownTimeout(1 * time.Second))
 
+	stopped := false
 	m.AddWorker("test", func(ctx context.Context) error {
+		<-ctx.Done()
+		stopped = true
 		return nil
 	})
 
-	err := m.RemoveWorker("test")
-	if err != nil {
-		t.Fatalf("移除协程失败: %v", err)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		m.StopWorker("test")
+	}()
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		m.Shutdown()
+	}()
+
+	m.Run()
+
+	if !stopped {
+		t.Error("协程未被停止")
 	}
 
-	err = m.RemoveWorker("test")
+	err := m.StopWorker("nonexistent")
 	if err != ErrWorkerNotFound {
 		t.Errorf("期望 ErrWorkerNotFound, got %v", err)
 	}
@@ -160,5 +174,67 @@ func TestWorker_StopFunc(t *testing.T) {
 
 	if !stopCalled {
 		t.Error("StopFunc 未被调用")
+	}
+}
+
+func TestManager_DynamicWorker(t *testing.T) {
+	m := NewManager(WithShutdownTimeout(2 * time.Second))
+
+	m.AddWorker("long-running", func(ctx context.Context) error {
+		<-ctx.Done()
+		return nil
+	})
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		m.AddWorker("temp-task", func(ctx context.Context) error {
+			time.Sleep(50 * time.Millisecond)
+			return nil
+		})
+	}()
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		m.Shutdown()
+	}()
+
+	m.Run()
+}
+
+func TestManager_IndependentContext(t *testing.T) {
+	m := NewManager(WithShutdownTimeout(2 * time.Second))
+
+	worker1Done := false
+	worker2Done := false
+
+	m.AddWorker("worker1", func(ctx context.Context) error {
+		<-ctx.Done()
+		worker1Done = true
+		return nil
+	})
+
+	m.AddWorker("worker2", func(ctx context.Context) error {
+		<-ctx.Done()
+		worker2Done = true
+		return nil
+	})
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		m.StopWorker("worker1")
+	}()
+
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		m.Shutdown()
+	}()
+
+	m.Run()
+
+	if !worker1Done {
+		t.Error("worker1 未被停止")
+	}
+	if !worker2Done {
+		t.Error("worker2 未被停止")
 	}
 }

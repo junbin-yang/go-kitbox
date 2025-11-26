@@ -20,7 +20,6 @@ func TestManager_HTTPServerShutdown(t *testing.T) {
 			return nil
 		},
 		WithStopFunc(func(ctx context.Context) error {
-			t.Log("调用 server.Shutdown")
 			return server.Shutdown(ctx)
 		}),
 	)
@@ -28,32 +27,26 @@ func TestManager_HTTPServerShutdown(t *testing.T) {
 	shutdownCalled := false
 	m.OnShutdown(func(ctx context.Context) error {
 		shutdownCalled = true
-		t.Log("OnShutdown 被调用")
 		return nil
 	})
 
-	// 启动服务器
+	done := make(chan error, 1)
 	go func() {
-		if err := m.Run(); err != nil {
-			t.Logf("Run 返回错误: %v", err)
-		}
+		done <- m.Run()
 	}()
 
-	// 等待服务器启动
 	time.Sleep(100 * time.Millisecond)
 
-	// 触发退出
-	t.Log("触发 Shutdown")
 	start := time.Now()
 	if err := m.Shutdown(); err != nil {
 		t.Errorf("Shutdown 返回错误: %v", err)
 	}
 	elapsed := time.Since(start)
 
-	t.Logf("Shutdown 耗时: %v", elapsed)
+	<-done
 
 	if elapsed > 2*time.Second {
-		t.Errorf("Shutdown 耗时过长: %v, 应该立即退出", elapsed)
+		t.Errorf("Shutdown 耗时过长: %v", elapsed)
 	}
 
 	if !shutdownCalled {

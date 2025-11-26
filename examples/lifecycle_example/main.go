@@ -20,6 +20,12 @@ func main() {
 
 	// 示例3: 钩子函数
 	hooksExample()
+
+	// 示例4: 独立Context和StopWorker
+	independentContextExample()
+
+	// 示例5: 动态添加协程
+	dynamicWorkerExample()
 }
 
 // httpServerExample HTTP服务器优雅退出示例
@@ -182,5 +188,107 @@ func hooksExample() {
 		fmt.Printf("错误: %v\n", err)
 	}
 
+	fmt.Println("\n完成!")
+}
+
+// independentContextExample 独立Context和StopWorker示例
+func independentContextExample() {
+	fmt.Println("4. 独立Context和StopWorker")
+	fmt.Println("-------------------")
+
+	manager := lifecycle.NewManager(
+		lifecycle.WithShutdownTimeout(3 * time.Second),
+	)
+
+	// 添加两个独立的协程
+	manager.AddWorker("worker1", func(ctx context.Context) error {
+		fmt.Println("  → Worker1 启动")
+		<-ctx.Done()
+		fmt.Println("  → Worker1 退出")
+		return nil
+	})
+
+	manager.AddWorker("worker2", func(ctx context.Context) error {
+		fmt.Println("  → Worker2 启动")
+		<-ctx.Done()
+		fmt.Println("  → Worker2 退出")
+		return nil
+	})
+
+	// 1秒后停止worker1
+	go func() {
+		time.Sleep(1 * time.Second)
+		fmt.Println("\n  → 停止 Worker1...")
+		manager.StopWorker("worker1")
+	}()
+
+	// 2秒后退出所有
+	go func() {
+		time.Sleep(2 * time.Second)
+		fmt.Println("\n  → 触发全局退出...")
+		manager.Shutdown()
+	}()
+
+	if err := manager.Run(); err != nil {
+		fmt.Printf("错误: %v\n", err)
+	}
+
+	fmt.Println()
+}
+
+// dynamicWorkerExample 动态添加协程示例
+func dynamicWorkerExample() {
+	fmt.Println("5. 动态添加协程")
+	fmt.Println("-------------------")
+
+	manager := lifecycle.NewManager(
+		lifecycle.WithShutdownTimeout(3 * time.Second),
+	)
+
+	// 添加主协程
+	manager.AddWorker("main-worker", func(ctx context.Context) error {
+		fmt.Println("  → 主协程启动")
+		<-ctx.Done()
+		fmt.Println("  → 主协程退出")
+		return nil
+	})
+
+	// 启动管理器
+	go func() {
+		if err := manager.Run(); err != nil {
+			fmt.Printf("错误: %v\n", err)
+		}
+	}()
+
+	time.Sleep(500 * time.Millisecond)
+
+	// 运行时动态添加临时任务
+	fmt.Println("  → 动态添加临时任务...")
+	manager.AddWorker("temp-task", func(ctx context.Context) error {
+		fmt.Println("  → 临时任务启动")
+		time.Sleep(500 * time.Millisecond)
+		fmt.Println("  → 临时任务完成（自动清理）")
+		return nil
+	})
+
+	// 等待临时任务完成
+	time.Sleep(1 * time.Second)
+
+	// 再添加一个临时任务
+	fmt.Println("  → 动态添加第二个临时任务...")
+	manager.AddWorker("temp-task-2", func(ctx context.Context) error {
+		fmt.Println("  → 临时任务2启动")
+		time.Sleep(500 * time.Millisecond)
+		fmt.Println("  → 临时任务2完成（自动清理）")
+		return nil
+	})
+
+	time.Sleep(1 * time.Second)
+
+	// 触发退出
+	fmt.Println("\n  → 触发退出...")
+	manager.Shutdown()
+
+	time.Sleep(500 * time.Millisecond)
 	fmt.Println("\n完成!")
 }

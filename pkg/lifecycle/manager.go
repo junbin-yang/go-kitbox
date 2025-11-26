@@ -13,6 +13,7 @@ import (
 type Manager struct {
 	mu              sync.RWMutex
 	workers         map[string]*Worker
+	workerContexts  map[string]context.CancelFunc
 	workerOrder     []string
 	hooks           *Hooks
 	signals         []os.Signal
@@ -28,6 +29,7 @@ type Manager struct {
 func NewManager(opts ...Option) *Manager {
 	m := &Manager{
 		workers:         make(map[string]*Worker),
+		workerContexts:  make(map[string]context.CancelFunc),
 		workerOrder:     make([]string, 0),
 		hooks:           newHooks(),
 		signals:         []os.Signal{syscall.SIGINT, syscall.SIGTERM},
@@ -43,7 +45,7 @@ func NewManager(opts ...Option) *Manager {
 	return m
 }
 
-// AddWorker 添加协程
+// AddWorker 添加协程（运行时动态添加）
 func (m *Manager) AddWorker(name string, runFunc RunFunc, opts ...WorkerOption) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -56,26 +58,61 @@ func (m *Manager) AddWorker(name string, runFunc RunFunc, opts ...WorkerOption) 
 	m.workers[name] = worker
 	m.workerOrder = append(m.workerOrder, name)
 
+	// 如果管理器已运行，立即启动该协程
+	if m.running {
+		workerCtx, workerCancel := context.WithCancel(m.rootCtx)
+		m.workerContexts[name] = workerCancel
+		m.wg.Add(1)
+
+		go func(w *Worker, wCtx context.Context, wName string) {
+			defer func() {
+				m.wg.Done()
+				m.mu.Lock()
+				delete(m.workerContexts, wName)
+				delete(m.workers, wName)
+				for i, n := range m.workerOrder {
+					if n == wName {
+						m.workerOrder = append(m.workerOrder[:i], m.workerOrder[i+1:]...)
+						break
+					}
+				}
+				m.mu.Unlock()
+			}()
+
+			m.hooks.callWorkerStart(w.Name(), nil)
+			err := w.Run(wCtx)
+			m.hooks.callWorkerExit(w.Name(), err)
+
+			if err != nil && err != context.Canceled {
+				select {
+				case m.errChan <- err:
+				default:
+				}
+			}
+		}(worker, workerCtx, name)
+	}
+
 	return nil
 }
 
-// RemoveWorker 移除协程
-func (m *Manager) RemoveWorker(name string) error {
+// StopWorker 停止指定协程
+func (m *Manager) StopWorker(name string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	worker, exists := m.workers[name]
+	cancel, hasCancel := m.workerContexts[name]
+	m.mu.Unlock()
 
-	if _, exists := m.workers[name]; !exists {
+	if !exists {
 		return ErrWorkerNotFound
 	}
 
-	delete(m.workers, name)
-
-	for i, n := range m.workerOrder {
-		if n == name {
-			m.workerOrder = append(m.workerOrder[:i], m.workerOrder[i+1:]...)
-			break
-		}
+	if hasCancel {
+		cancel()
 	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), m.shutdownTimeout)
+	defer shutdownCancel()
+	worker.Stop(shutdownCtx)
 
 	return nil
 }
@@ -168,20 +205,32 @@ func (m *Manager) Shutdown() error {
 
 // startWorkers 启动所有协程
 func (m *Manager) startWorkers(ctx context.Context) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	for _, name := range m.workerOrder {
 		worker := m.workers[name]
+		workerCtx, workerCancel := context.WithCancel(ctx)
+		m.workerContexts[name] = workerCancel
 		m.wg.Add(1)
 
-		go func(w *Worker) {
-			defer m.wg.Done()
+		go func(w *Worker, wCtx context.Context, wName string) {
+			defer func() {
+				m.wg.Done()
+				m.mu.Lock()
+				delete(m.workerContexts, wName)
+				delete(m.workers, wName)
+				for i, n := range m.workerOrder {
+					if n == wName {
+						m.workerOrder = append(m.workerOrder[:i], m.workerOrder[i+1:]...)
+						break
+					}
+				}
+				m.mu.Unlock()
+			}()
 
 			m.hooks.callWorkerStart(w.Name(), nil)
-
-			err := w.Run(ctx)
-
+			err := w.Run(wCtx)
 			m.hooks.callWorkerExit(w.Name(), err)
 
 			if err != nil && err != context.Canceled {
@@ -190,7 +239,7 @@ func (m *Manager) startWorkers(ctx context.Context) {
 				default:
 				}
 			}
-		}(worker)
+		}(worker, workerCtx, name)
 	}
 }
 
@@ -199,10 +248,12 @@ func (m *Manager) shutdown() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), m.shutdownTimeout)
 	defer cancel()
 
-	// 取消所有协程
-	if m.cancel != nil {
-		m.cancel()
+	// 取消所有协程的 context
+	m.mu.Lock()
+	for _, cancelFunc := range m.workerContexts {
+		cancelFunc()
 	}
+	m.mu.Unlock()
 
 	// 调用停止函数（LIFO顺序）
 	m.mu.RLock()
