@@ -4,14 +4,14 @@
 
 ## 特性
 
-- **环形队列** - 手动实现线程安全的环形缓冲区，降低 GC 压力
-- **优先级队列** - 可选的多级桶优先级队列，支持防饥饿机制
-- **动态扩缩容** - 自动或手动调整工作协程数量，适应负载变化
-- **任务超时** - 每个任务可设置独立超时时间
-- **Panic 恢复** - 自动捕获任务执行中的 panic，防止工作协程崩溃
-- **指标统计** - 实时统计任务执行情况、成功率、平均耗时等
-- **优雅关闭** - 支持等待队列中任务执行完毕
-- **多种提交方式** - 同步、异步、批量提交
+-   **环形队列** - 手动实现线程安全的环形缓冲区，降低 GC 压力
+-   **优先级队列** - 可选的多级桶优先级队列，支持防饥饿机制
+-   **动态扩缩容** - 自动或手动调整工作协程数量，适应负载变化
+-   **任务超时** - 每个任务可设置独立超时时间
+-   **Panic 恢复** - 自动捕获任务执行中的 panic，防止工作协程崩溃
+-   **指标统计** - 实时统计任务执行情况、成功率、平均耗时等
+-   **优雅关闭** - 支持等待队列中任务执行完毕
+-   **多种提交方式** - 同步、异步、批量提交
 
 ## 文件结构
 
@@ -31,9 +31,6 @@ pkg/taskpool/
 ├── taskpool_test.go       # 核心功能测试
 ├── benchmark_test.go      # 性能基准测试
 └── README.md              # 文档
-
-examples/taskpool_example/
-└── main.go                # 使用示例
 ```
 
 ## 安装
@@ -48,14 +45,14 @@ go get github.com/junbin-yang/go-kitbox/pkg/taskpool
 
 `taskpool.New()` 不传任何参数时使用以下默认配置：
 
-- **队列大小**: 1000
-- **最小工作协程数**: 5
-- **最大工作协程数**: 50
-- **优先级队列**: 关闭
-- **自动扩缩容**: 关闭
-- **扩缩容检查间隔**: 5秒
-- **防饥饿参数**: 每10次高优先级后消费1次低优先级
-- **默认任务超时**: 无超时
+-   **队列大小**: 1000
+-   **最小工作协程数**: 5
+-   **最大工作协程数**: 50
+-   **优先级队列**: 关闭
+-   **自动扩缩容**: 关闭
+-   **扩缩容检查间隔**: 5 秒
+-   **防饥饿参数**: 每 10 次高优先级后消费 1 次低优先级
+-   **默认任务超时**: 无超时
 
 ### 基础使用
 
@@ -283,30 +280,30 @@ func main() {
 
 ### 配置选项
 
-| 选项 | 说明 |
-|------|------|
-| `WithQueueSize(size)` | 设置队列大小 |
-| `WithMinWorkers(n)` | 设置最小工作协程数 |
-| `WithMaxWorkers(n)` | 设置最大工作协程数 |
-| `WithPriorityQueue(enable)` | 启用优先级队列 |
-| `WithAutoScale(enable)` | 启用自动扩缩容 |
-| `WithScaleInterval(interval)` | 设置扩缩容检查间隔 |
-| `WithStarvationPrevention(n)` | 设置防饥饿参数 |
-| `WithDefaultTimeout(timeout)` | 设置默认任务超时 |
-| `WithOnWorkerScale(fn)` | 设置扩缩容钩子 |
-| `WithOnTaskStart(fn)` | 设置任务开始钩子 |
-| `WithOnTaskComplete(fn)` | 设置任务完成钩子 |
-| `WithOnTaskTimeout(fn)` | 设置任务超时钩子 |
-| `WithOnTaskPanic(fn)` | 设置任务panic钩子 |
-| `WithOnShutdown(fn)` | 设置关闭钩子 |
+| 选项                          | 说明                |
+| ----------------------------- | ------------------- |
+| `WithQueueSize(size)`         | 设置队列大小        |
+| `WithMinWorkers(n)`           | 设置最小工作协程数  |
+| `WithMaxWorkers(n)`           | 设置最大工作协程数  |
+| `WithPriorityQueue(enable)`   | 启用优先级队列      |
+| `WithAutoScale(enable)`       | 启用自动扩缩容      |
+| `WithScaleInterval(interval)` | 设置扩缩容检查间隔  |
+| `WithStarvationPrevention(n)` | 设置防饥饿参数      |
+| `WithDefaultTimeout(timeout)` | 设置默认任务超时    |
+| `WithOnWorkerScale(fn)`       | 设置扩缩容钩子      |
+| `WithOnTaskStart(fn)`         | 设置任务开始钩子    |
+| `WithOnTaskComplete(fn)`      | 设置任务完成钩子    |
+| `WithOnTaskTimeout(fn)`       | 设置任务超时钩子    |
+| `WithOnTaskPanic(fn)`         | 设置任务 panic 钩子 |
+| `WithOnShutdown(fn)`          | 设置关闭钩子        |
 
 ### 任务选项
 
-| 选项 | 说明 |
-|------|------|
-| `WithTaskID(id)` | 设置任务ID |
+| 选项              | 说明                    |
+| ----------------- | ----------------------- |
+| `WithTaskID(id)`  | 设置任务 ID             |
 | `WithPriority(p)` | 设置任务优先级（0-100） |
-| `WithTimeout(d)` | 设置任务超时时间 |
+| `WithTimeout(d)`  | 设置任务超时时间        |
 
 ## 最佳实践
 
