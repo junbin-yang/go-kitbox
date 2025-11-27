@@ -640,47 +640,47 @@ if len(data) < expectedSize {
 
 ## CLI 工具
 
-### binpack-gen 代码生成器
+`binpack-cli` 是一个统一的命令行工具，提供代码生成、文档生成和调试功能。
 
-`binpack-gen` 是一个命令行工具，可以为结构体生成静态编解码代码，消除反射开销。
-
-#### 安装
+### 安装
 
 ```bash
-go install github.com/junbin-yang/go-kitbox/pkg/binpack/generator/cmd/binpack-gen@latest
+go install github.com/junbin-yang/go-kitbox/pkg/binpack/generator/cmd/binpack-cli@latest
 ```
 
 或从源码构建：
 
 ```bash
-go build -o binpack-gen pkg/binpack/generator/cmd/binpack-gen.go
+cd pkg/binpack/generator/cmd/binpack-cli
+go build -o binpack-cli
 ```
 
-#### 使用方法
+### 子命令
+
+#### 1. gen - 代码生成
+
+为结构体生成静态编解码代码，消除反射开销。
 
 ```bash
-binpack-gen -pkg <package> -type <struct> [-output <file>]
+binpack-cli gen -pkg <package> -type <struct> [-output <file>]
 ```
 
-参数说明：
-
+**参数：**
 -   `-pkg`: 包路径（如 `./mypackage`）
 -   `-type`: 结构体类型名
 -   `-output`: 输出文件路径（可选，默认输出到标准输出）
 
-#### 示例
+**示例：**
 
 ```bash
 # 为 Packet 结构体生成代码
-binpack-gen -pkg ./internal/binpack/testdata -type Packet -output packet_gen.go
+binpack-cli gen -pkg ./mypackage -type Packet -output packet_gen.go
 
 # 输出到标准输出
-binpack-gen -pkg ./mypackage -type GamePacket
+binpack-cli gen -pkg ./mypackage -type GamePacket
 ```
 
-#### 生成的代码
-
-生成的代码包含两个函数：
+**生成的代码：**
 
 ```go
 // Marshal<TypeName> 编码结构体
@@ -699,6 +699,223 @@ func UnmarshalPacket(data []byte, v *Packet) error {
     v.Length = binary.LittleEndian.Uint16(data[5:])
     return nil
 }
+```
+
+#### 2. docs - 协议文档生成
+
+生成协议文档，包含字段列表、字节布局和 Tag 语法说明。
+
+```bash
+binpack-cli docs -pkg <package> -type <struct> [-output <file>]
+```
+
+**参数：**
+-   `-pkg`: 包路径
+-   `-type`: 结构体类型名
+-   `-output`: 输出文件路径（可选，默认输出到标准输出）
+
+**示例：**
+
+```bash
+# 生成协议文档
+binpack-cli docs -pkg ./mypackage -type Packet -output protocol.txt
+
+# 输出到标准输出
+binpack-cli docs -pkg ./mypackage -type GamePacket
+```
+
+**生成的文档示例：**
+
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  Protocol Documentation: Packet                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────┬──────────────┬────────┬──────┬──────────┬─────────────┐
+│ Field Name      │ Type         │ Offset │ Size │ Endian   │ Options     │
+├─────────────────┼──────────────┼────────┼──────┼──────────┼─────────────┤
+│ Magic           │ uint32       │ 0      │ 4    │ BE       │             │
+│ Type            │ uint8        │ 4      │ 1    │ BE       │             │
+│ Length          │ uint16       │ 5      │ 2    │ LE       │             │
+│ Payload         │ []byte       │ 7      │ var  │ BE       │ len:Length  │
+└─────────────────┴──────────────┴────────┴──────┴──────────┴─────────────┘
+
+Byte Layout:
+────────────────────────────────────────────────────────────────────────────
+
+0000: 00 01 02 03 04 05 06  │ Magic Type Length...
+```
+
+#### 3. debug - 二进制数据调试
+
+可视化调试二进制数据，显示十六进制、字段解析和字节映射。
+
+```bash
+binpack-cli debug -pkg <package> -type <struct> (-data <file> | -hex <string>)
+```
+
+**参数：**
+-   `-pkg`: 包路径
+-   `-type`: 结构体类型名
+-   `-data`: 二进制数据文件路径
+-   `-hex`: 十六进制字符串（如：`1234ABCD`）
+
+**示例：**
+
+```bash
+# 从文件读取
+binpack-cli debug -pkg ./mypackage -type Packet -data packet.bin
+
+# 从十六进制字符串
+binpack-cli debug -pkg ./mypackage -type Packet -hex "1234567890ABCDEF"
+```
+
+**输出示例（正常数据）：**
+
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  Binary Data Debug: Packet                                                ║
+║  Data Length: 7                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+Hexadecimal View:
+────────────────────────────────────────────────────────────────────────────
+
+0000: [12] 34  56  78 [01][05] 00  │ .4Vx...
+
+Field Parsing:
+────────────────────────────────────────────────────────────────────────────
+
+Magic           (uint32    ) @ 0x0000 [ 4 bytes, BE] : 0x12345678 (305419896)
+Type            (uint8     ) @ 0x0004 [ 1 bytes, BE] : 0x01 (1)
+Length          (uint16    ) @ 0x0005 [ 2 bytes, LE] : 0x0005 (5)
+
+Byte Mapping:
+────────────────────────────────────────────────────────────────────────────
+
+0000: [Magic] [Type] [Length]
+```
+
+**输出示例（错误数据 - 数据不足）：**
+
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║  Binary Data Debug: Packet                                                ║
+║  Data Length: 5                                                           ║
+║  Status: ⚠️  ERRORS DETECTED                                              ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+Hexadecimal View:
+────────────────────────────────────────────────────────────────────────────
+
+0000: [12] 34  56  78 [01] XX  XX  │ .4Vx.??
+
+Field Parsing:
+────────────────────────────────────────────────────────────────────────────
+
+Magic           (uint32    ) @ 0x0000 [ 4 bytes, BE] : 0x12345678 (305419896)
+Type            (uint8     ) @ 0x0004 [ 1 bytes, BE] : 0x01 (1)
+❌ Length       (uint16    ) @ 0x0005 : !!! ERROR !!! insufficient data (missing 2 bytes)
+
+Byte Mapping:
+────────────────────────────────────────────────────────────────────────────
+
+0000: [Magic] [Type]
+```
+
+**错误标记说明：**
+- `⚠️` - 头部警告标记，表示检测到错误
+- `!XX!` - 十六进制视图中标记错误字段的起始位置
+- `XX` - 缺失的字节位置
+- `?` - ASCII 视图中缺失数据的位置
+- `❌` - 字段解析中的错误标记
+- `!!! ERROR !!!` - 明确的错误提示文本
+
+## 测试
+
+### 运行测试
+
+```bash
+# 运行所有测试
+go test ./...
+
+# 运行特定包的测试
+go test ./pkg/binpack
+
+# 运行性能测试
+go test -bench=. ./pkg/binpack
+
+# 运行测试并显示覆盖率
+go test -cover ./pkg/binpack
+```
+
+### 测试用例
+
+测试数据位于 [internal/binpack/testdata](../../internal/binpack/testdata/)，包含多种协议结构：
+
+**简单协议包（Packet）：**
+```go
+type Packet struct {
+    Magic  uint32 `bin:"0:4:be"`
+    Type   uint8  `bin:"4:1"`
+    Length uint16 `bin:"5:2:le"`
+}
+```
+
+**复杂协议包（ComplexPacket）：**
+```go
+type ComplexPacket struct {
+    Magic      uint32   `bin:"0:4:be"`
+    Version    uint8    `bin:"4:1"`
+    Flags      uint8    `bin:"5:1"`
+    Enable     uint8    `bin:"5:1,bits:0"`      // 位字段
+    Mode       uint8    `bin:"5:1,bits:1-2"`    // 位字段
+    Reserved   uint8    `bin:"5:1,bits:3-7"`    // 位字段
+    Length     uint16   `bin:"6:2:le"`
+    Payload    []byte   `bin:"8:var,len:Length"` // 变长字段
+    Checksum   uint32   `bin:"-1:4:be"`         // 末尾字段
+}
+```
+
+### CLI 工具测试示例
+
+**测试代码生成：**
+```bash
+cd pkg/binpack/generator/cmd/binpack-cli
+go build -o binpack-cli
+
+# 生成简单协议的代码
+./binpack-cli gen -pkg ../../../../../internal/binpack/testdata -type Packet
+
+# 生成复杂协议的代码
+./binpack-cli gen -pkg ../../../../../internal/binpack/testdata -type ComplexPacket
+```
+
+**测试文档生成：**
+```bash
+# 生成简单协议文档
+./binpack-cli docs -pkg ../../../../../internal/binpack/testdata -type Packet
+
+# 生成复杂协议文档
+./binpack-cli docs -pkg ../../../../../internal/binpack/testdata -type ComplexPacket
+```
+
+**测试调试功能（正常数据）：**
+```bash
+# 简单协议 - 正常数据
+./binpack-cli debug -pkg ../../../../../internal/binpack/testdata -type Packet -hex "1234567801050000"
+
+# 复杂协议 - 正常数据
+./binpack-cli debug -pkg ../../../../../internal/binpack/testdata -type ComplexPacket -hex "12345678010D0500AABBCCDDEEFF00112233445566"
+```
+
+**测试调试功能（错误数据）：**
+```bash
+# 数据不足 - 缺少 Length 字段
+./binpack-cli debug -pkg ../../../../../internal/binpack/testdata -type Packet -hex "1234567801"
+
+# 数据不足 - 缺少 Checksum 字段
+./binpack-cli debug -pkg ../../../../../internal/binpack/testdata -type ComplexPacket -hex "12345678010D0500AABBCCDD"
 ```
 
 ## 许可证

@@ -11,19 +11,30 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-var (
-	pkg    = flag.String("pkg", "", "包路径（如：./mypackage）")
-	typ    = flag.String("type", "", "结构体类型名")
-	output = flag.String("output", "", "输出文件路径")
-)
+func runGen(args []string) {
+	fs := flag.NewFlagSet("gen", flag.ExitOnError)
+	pkg := fs.String("pkg", "", "包路径（如：./mypackage）")
+	typ := fs.String("type", "", "结构体类型名")
+	output := fs.String("output", "", "输出文件路径（可选，默认输出到标准输出）")
 
-func main() {
-	flag.Parse()
+	fs.Usage = func() {
+		fmt.Println("Usage: binpack gen -pkg <package> -type <struct> [-output <file>]")
+		fmt.Println()
+		fmt.Println("Generate static encoder/decoder code for a struct type.")
+		fmt.Println()
+		fmt.Println("Options:")
+		fs.PrintDefaults()
+		fmt.Println()
+		fmt.Println("Example:")
+		fmt.Println("  binpack gen -pkg ./mypackage -type Packet -output packet_gen.go")
+	}
+
+	if err := fs.Parse(args); err != nil {
+		os.Exit(1)
+	}
 
 	if *pkg == "" || *typ == "" {
-		fmt.Println("Usage: binpack-gen -pkg <package> -type <struct> [-output <file>]")
-		fmt.Println("\nExample:")
-		fmt.Println("  binpack-gen -pkg ./mypackage -type Packet -output packet_gen.go")
+		fs.Usage()
 		os.Exit(1)
 	}
 
@@ -63,14 +74,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 转换为 reflect.Type（通过结构体信息）
+	// 转换为结构体
 	structType, ok := targetType.Underlying().(*types.Struct)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Type %s is not a struct\n", *typ)
 		os.Exit(1)
 	}
 
-	// 构建 fieldInfo 用于生成
+	// 构建 fieldInfo
 	fields := make([]generator.FieldInfo, 0)
 	maxSize := 0
 
@@ -78,23 +89,7 @@ func main() {
 		field := structType.Field(i)
 		tag := structType.Tag(i)
 
-		binTag := ""
-		// 解析 struct tag
-		if tag != "" {
-			// 简单解析 bin tag
-			for j := 0; j < len(tag); j++ {
-				if j+4 < len(tag) && tag[j:j+4] == "bin:" {
-					start := j + 5 // 跳过 bin:"
-					end := start
-					for end < len(tag) && tag[end] != '"' {
-						end++
-					}
-					binTag = tag[start:end]
-					break
-				}
-			}
-		}
-
+		binTag := extractBinTag(tag)
 		if binTag == "" || binTag == "-" {
 			continue
 		}
@@ -106,7 +101,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		// 简化类型名（去掉包名）
+		// 简化类型名
 		typeName := field.Type().String()
 		if basic, ok := field.Type().(*types.Basic); ok {
 			typeName = basic.Name()
@@ -136,15 +131,15 @@ func main() {
 		}
 	}
 
-	// 生成代码（使用原包名）
+	// 生成代码
 	pkgName := pkgs[0].Name
 	if pkgName == "" {
-		// 从 ID 提取包名
 		pkgName = pkgs[0].ID
 		if idx := strings.LastIndex(pkgName, "/"); idx >= 0 {
 			pkgName = pkgName[idx+1:]
 		}
 	}
+
 	code, err := generator.GenerateFromFields(*typ, pkgName, fields, maxSize)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to generate code: %v\n", err)
@@ -161,4 +156,24 @@ func main() {
 	} else {
 		fmt.Println(string(code))
 	}
+}
+
+// extractBinTag 从 struct tag 中提取 bin tag
+func extractBinTag(tag string) string {
+	if tag == "" {
+		return ""
+	}
+
+	// 查找 bin:"..."
+	for i := 0; i < len(tag); i++ {
+		if i+4 < len(tag) && tag[i:i+4] == "bin:" {
+			start := i + 5 // 跳过 bin:"
+			end := start
+			for end < len(tag) && tag[end] != '"' {
+				end++
+			}
+			return tag[start:end]
+		}
+	}
+	return ""
 }
