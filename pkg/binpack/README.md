@@ -162,6 +162,8 @@ type Protocol struct {
 | `[N]byte`                             | 固定长度字节数组                       |
 | `[]byte`                              | 变长字节切片（需指定 `len:FieldName`） |
 | `string`                              | 字符串（固定长度或变长）               |
+| `[]T` (基础类型)                      | 数组字段（需指定 `repeat,size`）       |
+| `[]Struct`                            | 结构体数组（需指定 `repeat`）          |
 
 ## 变长字段
 
@@ -297,6 +299,72 @@ pkt2 := Packet{
 -   条件字段必须在被引用字段之后定义
 -   仅支持无符号整数类型的相等比较
 -   用途：协议版本兼容、可选字段
+
+## 数组字段
+
+支持通过 `repeat` 选项解析重复的字段数组：
+
+### 基础类型数组
+
+```go
+type ModbusPacket struct {
+    RegisterCount uint8    `bin:"0:1"`
+    Registers     []uint16 `bin:"1:var,len:RegisterCount,repeat,size:2:be"`
+}
+
+// 使用示例
+pkt := ModbusPacket{
+    RegisterCount: 3,
+    Registers:     []uint16{100, 200, 300},
+}
+// 编码: [0x03 0x00 0x64 0x00 0xC8 0x01 0x2C]
+```
+
+**语法**: `bin:"offset:var,len:LengthField,repeat,size:ElementSize:endian"`
+
+-   `repeat`: 标记为数组字段
+-   `size:N`: 每个元素的字节大小（基础类型必需）
+-   `endian`: 字节序（可选，be/le）
+
+### 结构体数组
+
+```go
+type CoAPOption struct {
+    Delta  uint8  `bin:"0:1"`
+    Length uint8  `bin:"1:1"`
+    Value  []byte `bin:"2:var,len:Length"`
+}
+
+type CoAPPacket struct {
+    OptionCount uint8        `bin:"0:1"`
+    Options     []CoAPOption `bin:"1:var,len:OptionCount,repeat"`
+}
+
+// 使用示例
+pkt := CoAPPacket{
+    OptionCount: 2,
+    Options: []CoAPOption{
+        {Delta: 11, Length: 4, Value: []byte("host")},
+        {Delta: 15, Length: 4, Value: []byte("path")},
+    },
+}
+```
+
+**语法**: `bin:"offset:var,len:LengthField,repeat"`
+
+-   自动计算每个结构体元素的大小
+-   支持嵌套的变长字段
+
+### 固定长度数组
+
+```go
+type SensorData struct {
+    Timestamp uint32     `bin:"0:4:be"`
+    Readings  [10]uint16 `bin:"4:20:be,repeat,size:2"`
+}
+```
+
+**语法**: `bin:"offset:totalSize:endian,repeat,size:ElementSize"`
 
 ## 高性能用法
 
@@ -538,12 +606,25 @@ func encodeCopy(pkt *Packet) []byte {
 
 ### 3. 错误处理
 
+binpack 提供详细的错误信息,包含字段名、偏移位置、期望长度等,便于快速定位问题。
+
 ```go
 // ✅ 推荐：检查错误
-data, err := binpack.Marshal(&pkt)
+var pkt GamePacket
+err := binpack.Unmarshal(data, &pkt)
 if err != nil {
-    log.Printf("marshal failed: %v", err)
+    // 详细错误示例:
+    // field "MessageID" (uint16) at offset 16: expected 2 bytes, got 1 bytes: data too short
+    // field "Enable" (uint8) at offset 1 bit 0: expected 1 bits, got 0 bits: bit not set
+    log.Printf("unmarshal failed: %v", err)
     return err
+}
+
+// ✅ 推荐：使用类型断言获取详细错误信息
+if decErr, ok := err.(*binpack.DecodeError); ok {
+    log.Printf("解码失败: 字段=%s, 类型=%s, 偏移=%d, 期望=%d字节, 实际=%d字节",
+        decErr.FieldName, decErr.FieldType, decErr.Offset,
+        decErr.ExpectedSize, decErr.ActualSize)
 }
 
 // ✅ 推荐：验证数据长度
@@ -551,6 +632,11 @@ if len(data) < expectedSize {
     return fmt.Errorf("data too short: expected %d, got %d", expectedSize, len(data))
 }
 ```
+
+**错误类型:**
+
+- `DecodeError`: 解码错误,包含字段名、类型、偏移、期望/实际长度等详细信息
+- `EncodeError`: 编码错误,包含字段名、类型和错误描述
 
 ## CLI 工具
 

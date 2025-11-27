@@ -8,15 +8,17 @@ import (
 
 // TagInfo 表示解析后的 tag 信息
 type TagInfo struct {
-	Offset    int    // 字节偏移量，-1 表示末尾
-	Size      int    // 字节大小，-1 表示变长
-	ByteOrder string // 字节序："be" 或 "le"
-	LenField  string // 变长字段的长度来源字段名
-	Encoding  string // 字符串编码：utf8, ascii, hex, gbk
-	Bits      string // 位字段范围："0-3"
-	Condition string // 条件表达式："Field==Value"
-	Checksum  string // 校验和类型和范围："crc16:0-100"
-	Skip      bool   // 是否跳过该字段
+	Offset      int    // 字节偏移量，-1 表示末尾
+	Size        int    // 字节大小，-1 表示变长
+	ByteOrder   string // 字节序："be" 或 "le"
+	LenField    string // 变长字段的长度来源字段名
+	Encoding    string // 字符串编码：utf8, ascii, hex, gbk
+	Bits        string // 位字段范围："0-3"
+	Condition   string // 条件表达式："Field==Value"
+	Checksum    string // 校验和类型和范围："crc16:0-100"
+	IsRepeat    bool   // 是否为数组字段
+	ElementSize int    // 每个元素的字节大小
+	Skip        bool   // 是否跳过该字段
 }
 
 // tagInfo 内部使用的别名
@@ -90,9 +92,17 @@ func parseTag(tag string) (*tagInfo, error) {
 
 	// 解析选项
 	for i := 1; i < len(parts); i++ {
-		opt := strings.SplitN(parts[i], ":", 2)
+		part := strings.TrimSpace(parts[i])
+
+		// 处理 repeat 标记（无值选项）
+		if part == "repeat" {
+			info.IsRepeat = true
+			continue
+		}
+
+		opt := strings.SplitN(part, ":", 2)
 		if len(opt) != 2 {
-			return nil, fmt.Errorf("invalid option format: %s", parts[i])
+			return nil, fmt.Errorf("invalid option format: %s", part)
 		}
 
 		key := strings.TrimSpace(opt[0])
@@ -103,6 +113,20 @@ func parseTag(tag string) (*tagInfo, error) {
 			info.LenField = value
 		case "enc":
 			info.Encoding = value
+		case "size":
+			// 解析元素大小和字节序: "2:be" 或 "2"
+			sizeparts := strings.Split(value, ":")
+			elemSize, err := strconv.Atoi(sizeparts[0])
+			if err != nil {
+				return nil, fmt.Errorf("invalid element size: %w", err)
+			}
+			info.ElementSize = elemSize
+			if len(sizeparts) >= 2 {
+				if sizeparts[1] != "be" && sizeparts[1] != "le" {
+					return nil, fmt.Errorf("invalid endian in size, must be 'be' or 'le'")
+				}
+				info.ByteOrder = sizeparts[1]
+			}
 		case "bits":
 			// 验证位字段格式: "0-3" 或 "4"
 			if !strings.Contains(value, "-") {

@@ -1,7 +1,9 @@
 package binpack
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math"
 	"reflect"
 	"sync"
 )
@@ -71,7 +73,7 @@ func CompileCodec(typ reflect.Type) (Codec, error) {
 			fc.index = i
 			codec.fields = append(codec.fields, fc)
 
-			if fc.isVariable {
+			if fc.isVariable || fc.isRepeat {
 				codec.hasVarLen = true
 			}
 
@@ -133,8 +135,33 @@ func (c *reflectCodec) Encode(v interface{}) ([]byte, error) {
 	totalSize := c.size
 	if c.hasVarLen {
 		for _, fc := range c.fields {
-			if fc.isVariable {
-				fieldVal := val.Field(fc.index)
+			fieldVal := val.Field(fc.index)
+			if fc.isRepeat && fieldVal.Kind() == reflect.Slice {
+				// 数组字段
+				count := fieldVal.Len()
+				if fc.elementSize > 0 {
+					// 基础类型数组
+					end := fc.offset + count*fc.elementSize
+					if end > totalSize {
+						totalSize = end
+					}
+				} else {
+					// 结构体数组，需要计算每个元素的大小
+					elemSize := 0
+					for i := 0; i < count; i++ {
+						elem := fieldVal.Index(i)
+						elemCodec, _ := CompileCodec(elem.Type())
+						if elemCodec != nil {
+							elemData, _ := elemCodec.Encode(elem.Addr().Interface())
+							elemSize += len(elemData)
+						}
+					}
+					end := fc.offset + elemSize
+					if end > totalSize {
+						totalSize = end
+					}
+				}
+			} else if fc.isVariable {
 				varLen := 0
 				if fieldVal.Kind() == reflect.Slice {
 					varLen = fieldVal.Len()
@@ -187,7 +214,46 @@ func (c *reflectCodec) encodeToBuffer(buf []byte, val reflect.Value) (int, error
 
 		fieldVal := val.Field(fc.index)
 
-		if fc.isVariable {
+		if fc.isRepeat && fieldVal.Kind() == reflect.Slice {
+			// 数组字段
+			count := fieldVal.Len()
+			currentOffset := fc.offset
+
+			if fc.elementSize > 0 {
+				// 基础类型数组
+				totalSize := count * fc.elementSize
+				if fc.offset+totalSize > len(buf) {
+					return 0, fmt.Errorf("buffer too small for array field %d", fc.index)
+				}
+
+				for i := 0; i < count; i++ {
+					elem := fieldVal.Index(i)
+					offset := fc.offset + i*fc.elementSize
+					if err := encodeElement(buf[offset:offset+fc.elementSize], elem, fc.elementSize, fc.byteOrder); err != nil {
+						return 0, fmt.Errorf("encode array element %d: %w", i, err)
+					}
+				}
+				currentOffset += totalSize
+			} else {
+				// 结构体数组
+				for i := 0; i < count; i++ {
+					elem := fieldVal.Index(i)
+					codec, err := CompileCodec(elem.Type())
+					if err != nil {
+						return 0, fmt.Errorf("compile codec for array element %d: %w", i, err)
+					}
+					n, err := codec.EncodeTo(buf[currentOffset:], elem.Addr().Interface())
+					if err != nil {
+						return 0, fmt.Errorf("encode array element %d: %w", i, err)
+					}
+					currentOffset += n
+				}
+			}
+
+			if currentOffset > maxSize {
+				maxSize = currentOffset
+			}
+		} else if fc.isVariable {
 			// 变长字段
 			varLen := 0
 			if fieldVal.Kind() == reflect.Slice {
@@ -232,7 +298,7 @@ func (c *reflectCodec) Decode(data []byte, v interface{}) error {
 	}
 
 	if len(data) < c.size {
-		return fmt.Errorf("data too short: expected at least %d bytes, got %d", c.size, len(data))
+		return newDecodeError("", c.typ.String(), 0, c.size, len(data), "data too short")
 	}
 
 	// 解码每个字段
@@ -247,13 +313,54 @@ func (c *reflectCodec) Decode(data []byte, v interface{}) error {
 
 		fieldVal := val.Field(fc.index)
 
-		if fc.isVariable {
+		if fc.isRepeat && fieldVal.Kind() == reflect.Slice {
+			// 数组字段
+			lenFieldVal := val.Field(fc.lenIndex)
+			count := int(lenFieldVal.Uint())
+
+			// 创建切片
+			slice := reflect.MakeSlice(fieldVal.Type(), count, count)
+
+			if fc.elementSize > 0 {
+				// 基础类型数组
+				totalSize := count * fc.elementSize
+				if fc.offset+totalSize > len(data) {
+					return newDecodeError(fc.name, fc.typeName, fc.offset, totalSize, len(data)-fc.offset, "data too short for array field")
+				}
+
+				for i := 0; i < count; i++ {
+					elem := slice.Index(i)
+					offset := fc.offset + i*fc.elementSize
+					if err := decodeElement(data[offset:offset+fc.elementSize], elem, fc.elementSize, fc.byteOrder); err != nil {
+						return fmt.Errorf("decode array element %d: %w", i, err)
+					}
+				}
+			} else {
+				// 结构体数组
+				currentOffset := fc.offset
+				for i := 0; i < count; i++ {
+					elem := slice.Index(i)
+					codec, err := CompileCodec(elem.Type())
+					if err != nil {
+						return fmt.Errorf("compile codec for array element %d: %w", i, err)
+					}
+					if err := codec.Decode(data[currentOffset:], elem.Addr().Interface()); err != nil {
+						return fmt.Errorf("decode array element %d: %w", i, err)
+					}
+					// 计算元素大小以更新偏移
+					elemData, _ := codec.Encode(elem.Addr().Interface())
+					currentOffset += len(elemData)
+				}
+			}
+
+			fieldVal.Set(slice)
+		} else if fc.isVariable {
 			// 变长字段，需要从长度字段获取长度
 			lenFieldVal := val.Field(fc.lenIndex)
 			varLen := int(lenFieldVal.Uint())
 
 			if fc.offset+varLen > len(data) {
-				return fmt.Errorf("data too short for variable field %d: need %d bytes", fc.index, fc.offset+varLen)
+				return newDecodeError(fc.name, fc.typeName, fc.offset, varLen, len(data)-fc.offset, "data too short for variable field")
 			}
 
 			// 动态创建解码器
@@ -283,5 +390,78 @@ func (c *reflectCodec) Decode(data []byte, v interface{}) error {
 		}
 	}
 
+	return nil
+}
+
+// encodeElement 编码单个数组元素
+func encodeElement(buf []byte, v reflect.Value, size int, byteOrder binary.ByteOrder) error {
+	switch v.Kind() {
+	case reflect.Uint8:
+		buf[0] = uint8(v.Uint())
+	case reflect.Uint16:
+		byteOrder.PutUint16(buf, uint16(v.Uint()))
+	case reflect.Uint32:
+		byteOrder.PutUint32(buf, uint32(v.Uint()))
+	case reflect.Uint64:
+		byteOrder.PutUint64(buf, v.Uint())
+	case reflect.Int8:
+		buf[0] = uint8(v.Int())
+	case reflect.Int16:
+		byteOrder.PutUint16(buf, uint16(v.Int()))
+	case reflect.Int32:
+		byteOrder.PutUint32(buf, uint32(v.Int()))
+	case reflect.Int64:
+		byteOrder.PutUint64(buf, uint64(v.Int()))
+	case reflect.Float32:
+		byteOrder.PutUint32(buf, math.Float32bits(float32(v.Float())))
+	case reflect.Float64:
+		byteOrder.PutUint64(buf, math.Float64bits(v.Float()))
+	case reflect.Struct:
+		// 结构体数组元素
+		codec, err := CompileCodec(v.Type())
+		if err != nil {
+			return err
+		}
+		_, err = codec.EncodeTo(buf, v.Addr().Interface())
+		return err
+	default:
+		return fmt.Errorf("unsupported element type: %v", v.Kind())
+	}
+	return nil
+}
+
+// decodeElement 解码单个数组元素
+func decodeElement(data []byte, v reflect.Value, size int, byteOrder binary.ByteOrder) error {
+	switch v.Kind() {
+	case reflect.Uint8:
+		v.SetUint(uint64(data[0]))
+	case reflect.Uint16:
+		v.SetUint(uint64(byteOrder.Uint16(data)))
+	case reflect.Uint32:
+		v.SetUint(uint64(byteOrder.Uint32(data)))
+	case reflect.Uint64:
+		v.SetUint(byteOrder.Uint64(data))
+	case reflect.Int8:
+		v.SetInt(int64(int8(data[0])))
+	case reflect.Int16:
+		v.SetInt(int64(int16(byteOrder.Uint16(data))))
+	case reflect.Int32:
+		v.SetInt(int64(int32(byteOrder.Uint32(data))))
+	case reflect.Int64:
+		v.SetInt(int64(byteOrder.Uint64(data)))
+	case reflect.Float32:
+		v.SetFloat(float64(math.Float32frombits(byteOrder.Uint32(data))))
+	case reflect.Float64:
+		v.SetFloat(math.Float64frombits(byteOrder.Uint64(data)))
+	case reflect.Struct:
+		// 结构体数组元素
+		codec, err := CompileCodec(v.Type())
+		if err != nil {
+			return err
+		}
+		return codec.Decode(data, v.Addr().Interface())
+	default:
+		return fmt.Errorf("unsupported element type: %v", v.Kind())
+	}
 	return nil
 }

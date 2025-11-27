@@ -18,6 +18,8 @@ type Codec interface {
 
 // fieldCodec 处理单个字段的编解码
 type fieldCodec struct {
+	name        string // 字段名
+	typeName    string // 字段类型名
 	index       int
 	offset      int
 	size        int
@@ -33,6 +35,8 @@ type fieldCodec struct {
 	condIndex   int    // 条件字段索引
 	condValue   uint64 // 条件值
 	conditional bool   // 是否为条件字段
+	isRepeat    bool   // 是否为数组字段
+	elementSize int    // 每个元素的字节大小
 	encoder     func(buf []byte, v reflect.Value) error
 	decoder     func(data []byte, v reflect.Value) error
 }
@@ -341,9 +345,13 @@ func buildFieldCodec(field reflect.StructField, tag *tagInfo) (*fieldCodec, erro
 	}
 
 	fc := &fieldCodec{
-		offset:    tag.Offset,
-		size:      tag.Size,
-		byteOrder: getByteOrder(tag.ByteOrder),
+		name:        field.Name,
+		typeName:    field.Type.String(),
+		offset:      tag.Offset,
+		size:        tag.Size,
+		byteOrder:   getByteOrder(tag.ByteOrder),
+		isRepeat:    tag.IsRepeat,
+		elementSize: tag.ElementSize,
 	}
 
 	// 处理条件字段
@@ -440,8 +448,18 @@ func buildFieldCodec(field reflect.StructField, tag *tagInfo) (*fieldCodec, erro
 			} else {
 				return nil, fmt.Errorf("[]byte must be variable length, use [N]byte for fixed length")
 			}
+		} else if tag.IsRepeat {
+			// 数组字段
+			if tag.Size == -1 {
+				if tag.LenField == "" {
+					return nil, fmt.Errorf("array field requires len option")
+				}
+				fc.isVariable = true
+				fc.lenField = tag.LenField
+			}
+			// encoder/decoder 将在 reflect_codec 中动态设置
 		} else {
-			return nil, fmt.Errorf("unsupported slice type: %v", field.Type)
+			return nil, fmt.Errorf("unsupported slice type: %v, use repeat option for arrays", field.Type)
 		}
 	case reflect.String:
 		if tag.Size == -1 {
