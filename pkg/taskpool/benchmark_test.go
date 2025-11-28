@@ -25,7 +25,7 @@ func BenchmarkTaskPool_SubmitAndWait(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = pool.SubmitAndWait(ctx, func(ctx context.Context) error {
+		_, _ = pool.SubmitAndWait(ctx, func(ctx context.Context) error {
 			return nil
 		})
 	}
