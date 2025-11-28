@@ -24,8 +24,8 @@ func (p *BufferPool) Get() []byte {
 }
 
 // Put 将 buffer 放回池中
-func (p *BufferPool) Put(buf []byte) {
-	p.pool.Put(buf)
+func (p *BufferPool) Put(buf *[]byte) {
+	p.pool.Put(*buf)
 }
 
 // DefaultBufferPool 默认 buffer 池（1KB）

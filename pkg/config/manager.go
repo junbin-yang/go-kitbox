@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -152,7 +151,7 @@ func (cm *ConfigManager) SaveConfig() error {
 
 	// 先写入临时文件（避免文件损坏）
 	tmpPath := cm.configPath + ".tmp"
-	if err := ioutil.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return fmt.Errorf("write temp config failed: %w", err)
 	}
 
@@ -187,7 +186,7 @@ func (cm *ConfigManager) ReloadConfig() error {
 	}
 
 	// 读取并解析配置
-	data, err := ioutil.ReadFile(currentPath)
+	data, err := os.ReadFile(currentPath)
 	if err != nil {
 		cm.mu.Unlock()
 		return fmt.Errorf("read config file failed: %w", err)
@@ -392,7 +391,7 @@ func (cm *ConfigManager) watchLoop() {
 
 // parseConfigFile 解析配置文件
 func (cm *ConfigManager) parseConfigFile() error {
-	data, err := ioutil.ReadFile(cm.configPath)
+	data, err := os.ReadFile(cm.configPath)
 	if err != nil {
 		return fmt.Errorf("read file failed: %w", err)
 	}

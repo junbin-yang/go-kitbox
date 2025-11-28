@@ -912,8 +912,6 @@ func (c *Connection) handleAckPacket(packet *Packet) {
 			// 重置重复计数以避免频繁触发
 			c.dupAckCount = 0
 		}
-	} else {
-		// 旧ACK：忽略
 	}
 
 	// 通知连接建立（如果是SYN-ACK）
