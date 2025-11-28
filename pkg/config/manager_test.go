@@ -246,7 +246,7 @@ func TestScenario9_DynamicWatch(t *testing.T) {
 
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(cfg)
 	if err := cm.LoadConfig(tmpFile); err != nil {
@@ -278,7 +278,7 @@ func TestScenario10_CloseManager(t *testing.T) {
 
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(
 		cfg,
@@ -362,7 +362,7 @@ func TestScenario13_OnChangeCallback(t *testing.T) {
 
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(cfg)
 	if err := cm.LoadConfig(tmpFile); err != nil {

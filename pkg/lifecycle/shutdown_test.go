@@ -12,7 +12,7 @@ func TestManager_HTTPServerShutdown(t *testing.T) {
 
 	server := &http.Server{Addr: ":18080"}
 
-	m.AddWorker("http-server",
+	_ = m.AddWorker("http-server",
 		func(ctx context.Context) error {
 			if err := server.ListenAndServe(); err != http.ErrServerClosed {
 				return err

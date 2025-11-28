@@ -31,7 +31,7 @@ func TestManager_StopWorker(t *testing.T) {
 	m := NewManager(WithShutdownTimeout(1 * time.Second))
 
 	stopped := false
-	m.AddWorker("test", func(ctx context.Context) error {
+	_ = m.AddWorker("test", func(ctx context.Context) error {
 		<-ctx.Done()
 		stopped = true
 		return nil
@@ -39,15 +39,15 @@ func TestManager_StopWorker(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		m.StopWorker("test")
+		_ = m.StopWorker("test")
 	}()
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		m.Shutdown()
+		_ = m.Shutdown()
 	}()
 
-	m.Run()
+	_ = m.Run()
 
 	if !stopped {
 		t.Error("协程未被停止")
@@ -85,17 +85,17 @@ func TestManager_Hooks(t *testing.T) {
 		return nil
 	})
 
-	m.AddWorker("test", func(ctx context.Context) error {
+	_ = m.AddWorker("test", func(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
 	})
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		m.Shutdown()
+		_ = m.Shutdown()
 	}()
 
-	m.Run()
+	_ = m.Run()
 
 	if !startupCalled {
 		t.Error("OnStartup 未被调用")
@@ -116,7 +116,7 @@ func TestManager_WorkerError(t *testing.T) {
 
 	expectedErr := errors.New("worker error")
 
-	m.AddWorker("test", func(ctx context.Context) error {
+	_ = m.AddWorker("test", func(ctx context.Context) error {
 		return expectedErr
 	})
 
@@ -131,7 +131,7 @@ func TestManager_ContextCancellation(t *testing.T) {
 
 	cancelled := false
 
-	m.AddWorker("test", func(ctx context.Context) error {
+	_ = m.AddWorker("test", func(ctx context.Context) error {
 		<-ctx.Done()
 		cancelled = true
 		return nil
@@ -139,10 +139,10 @@ func TestManager_ContextCancellation(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		m.Shutdown()
+		_ = m.Shutdown()
 	}()
 
-	m.Run()
+	_ = m.Run()
 
 	if !cancelled {
 		t.Error("协程未收到取消信号")
@@ -170,7 +170,7 @@ func TestWorker_StopFunc(t *testing.T) {
 	cancel()
 	time.Sleep(50 * time.Millisecond)
 
-	worker.Stop(context.Background())
+	_ = worker.Stop(context.Background())
 
 	if !stopCalled {
 		t.Error("StopFunc 未被调用")
@@ -180,14 +180,14 @@ func TestWorker_StopFunc(t *testing.T) {
 func TestManager_DynamicWorker(t *testing.T) {
 	m := NewManager(WithShutdownTimeout(2 * time.Second))
 
-	m.AddWorker("long-running", func(ctx context.Context) error {
+	_ = m.AddWorker("long-running", func(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
 	})
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		m.AddWorker("temp-task", func(ctx context.Context) error {
+		_ = m.AddWorker("temp-task", func(ctx context.Context) error {
 			time.Sleep(50 * time.Millisecond)
 			return nil
 		})
@@ -195,10 +195,10 @@ func TestManager_DynamicWorker(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		m.Shutdown()
+		_ = m.Shutdown()
 	}()
 
-	m.Run()
+	_ = m.Run()
 }
 
 func TestManager_IndependentContext(t *testing.T) {
@@ -207,13 +207,13 @@ func TestManager_IndependentContext(t *testing.T) {
 	worker1Done := false
 	worker2Done := false
 
-	m.AddWorker("worker1", func(ctx context.Context) error {
+	_ = m.AddWorker("worker1", func(ctx context.Context) error {
 		<-ctx.Done()
 		worker1Done = true
 		return nil
 	})
 
-	m.AddWorker("worker2", func(ctx context.Context) error {
+	_ = m.AddWorker("worker2", func(ctx context.Context) error {
 		<-ctx.Done()
 		worker2Done = true
 		return nil
@@ -221,15 +221,15 @@ func TestManager_IndependentContext(t *testing.T) {
 
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		m.StopWorker("worker1")
+		_ = m.StopWorker("worker1")
 	}()
 
 	go func() {
 		time.Sleep(300 * time.Millisecond)
-		m.Shutdown()
+		_ = m.Shutdown()
 	}()
 
-	m.Run()
+	_ = m.Run()
 
 	if !worker1Done {
 		t.Error("worker1 未被停止")
