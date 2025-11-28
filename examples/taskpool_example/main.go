@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== TaskPool 示例 ===\n")
+	fmt.Println("=== TaskPool 示例 ===")
 
 	// 示例1: 基础使用
 	basicExample()

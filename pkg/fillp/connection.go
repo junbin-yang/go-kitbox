@@ -112,7 +112,7 @@ type Connection struct {
 	startTime   time.Time // 连接开始时间
 	createdTime time.Time // 连接创建时间（用于相对时间戳）
 
-	logger *log.Logger // 日志记录器
+	logger log.Interface // 日志记录器
 }
 
 // ConnectionStats 包含连接的统计信息

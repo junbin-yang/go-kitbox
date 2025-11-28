@@ -17,7 +17,7 @@ type GamePacket struct {
 }
 
 func main() {
-	fmt.Println("=== binpack 示例 ===\n")
+	fmt.Println("=== binpack 示例 ===")
 
 	// 1. 基础编解码
 	fmt.Println("1. 基础编解码:")

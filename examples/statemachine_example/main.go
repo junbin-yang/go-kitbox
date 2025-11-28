@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== 状态机示例 ===\n")
+	fmt.Println("=== 状态机示例 ===")
 
 	// 示例1: 基础有限状态机 - 订单状态
 	orderExample()

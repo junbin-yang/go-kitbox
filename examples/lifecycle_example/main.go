@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	fmt.Println("=== 生命周期管理示例 ===\n")
+	fmt.Println("=== 生命周期管理示例 ===")
 
 	// 示例1: HTTP服务器优雅退出
 	httpServerExample()
