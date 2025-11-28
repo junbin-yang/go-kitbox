@@ -8,7 +8,7 @@ import (
 
 func BenchmarkTaskPool_Submit(b *testing.B) {
 	pool := New(WithQueueSize(10000), WithMinWorkers(10), WithMaxWorkers(50))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -20,12 +20,12 @@ func BenchmarkTaskPool_Submit(b *testing.B) {
 
 func BenchmarkTaskPool_SubmitAndWait(b *testing.B) {
 	pool := New(WithQueueSize(10000), WithMinWorkers(10), WithMaxWorkers(50))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pool.SubmitAndWait(ctx, func(ctx context.Context) error {
+		_ = pool.SubmitAndWait(ctx, func(ctx context.Context) error {
 			return nil
 		})
 	}
@@ -38,7 +38,7 @@ func BenchmarkTaskPool_Priority(b *testing.B) {
 		WithMaxWorkers(50),
 		WithPriorityQueue(true),
 	)
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -50,7 +50,7 @@ func BenchmarkTaskPool_Priority(b *testing.B) {
 
 func BenchmarkTaskPool_Concurrent(b *testing.B) {
 	pool := New(WithQueueSize(10000), WithMinWorkers(10), WithMaxWorkers(50))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {

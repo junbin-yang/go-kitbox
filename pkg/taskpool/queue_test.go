@@ -43,8 +43,8 @@ func TestRingQueue_Full(t *testing.T) {
 	task2 := newTask(func(ctx context.Context) error { return nil })
 	task3 := newTask(func(ctx context.Context) error { return nil })
 
-	q.Push(task1, false)
-	q.Push(task2, false)
+	_ = q.Push(task1, false)
+	_ = q.Push(task2, false)
 
 	err := q.Push(task3, false)
 	if err != ErrQueueFull {

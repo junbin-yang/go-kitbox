@@ -13,9 +13,9 @@ func TestPriorityQueue_Priority(t *testing.T) {
 	midTask := newTask(func(ctx context.Context) error { return nil }, WithPriority(50))
 	highTask := newTask(func(ctx context.Context) error { return nil }, WithPriority(90))
 
-	pq.Push(lowTask, false)
-	pq.Push(midTask, false)
-	pq.Push(highTask, false)
+	_ = pq.Push(lowTask, false)
+	_ = pq.Push(midTask, false)
+	_ = pq.Push(highTask, false)
 
 	task1, _ := pq.Pop(false)
 	if task1.Priority != 90 {
@@ -78,8 +78,8 @@ func TestPriorityQueue_Len(t *testing.T) {
 		t.Errorf("Len() = %d, want 5", pq.Len())
 	}
 
-	pq.Pop(false)
-	pq.Pop(false)
+	_, _ = pq.Pop(false)
+	_, _ = pq.Pop(false)
 
 	if pq.Len() != 3 {
 		t.Errorf("Len() = %d, want 3", pq.Len())
