@@ -9,18 +9,18 @@ import (
 
 type TestConfig struct {
 	Server struct {
-		Port    int    `yaml:"port" json:"port"`
-		Host    string `yaml:"host" json:"host"`
-		Timeout int    `yaml:"timeout" json:"timeout"`
-	} `yaml:"server" json:"server"`
+		Port    int    `yaml:"port" json:"port" ini:"port"`
+		Host    string `yaml:"host" json:"host" ini:"host"`
+		Timeout int    `yaml:"timeout" json:"timeout" ini:"timeout"`
+	} `yaml:"server" json:"server" ini:"server"`
 	Logger struct {
-		Level  string `yaml:"level" json:"level"`
-		Path   string `yaml:"path" json:"path"`
-		Rotate bool   `yaml:"rotate" json:"rotate"`
-	} `yaml:"logger" json:"logger"`
+		Level  string `yaml:"level" json:"level" ini:"level"`
+		Path   string `yaml:"path" json:"path" ini:"path"`
+		Rotate bool   `yaml:"rotate" json:"rotate" ini:"rotate"`
+	} `yaml:"logger" json:"logger" ini:"logger"`
 	Database struct {
-		DSN string `yaml:"dsn" json:"dsn"`
-	} `yaml:"database" json:"database"`
+		DSN string `yaml:"dsn" json:"dsn" ini:"dsn"`
+	} `yaml:"database" json:"database" ini:"database"`
 }
 
 // 场景1：基础使用（默认YAML格式）
@@ -296,4 +296,100 @@ func TestScenario10_CloseManager(t *testing.T) {
 
 	// 关闭管理器
 	cm.Close()
+}
+
+// 场景11：INI格式配置
+func TestScenario11_INIFormat(t *testing.T) {
+	cfg := &TestConfig{}
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.ini")
+
+	cm := NewConfigManager(cfg, WithSerializer(&INISerializer{}))
+	if err := cm.LoadConfig(testDataPath); err != nil {
+		t.Fatalf("加载INI配置失败: %v", err)
+	}
+
+	configData, err := cm.GetConfig()
+	if err != nil {
+		t.Fatalf("获取配置失败: %v", err)
+	}
+
+	testCfg := configData.(*TestConfig)
+	if testCfg.Server.Port != 7070 {
+		t.Errorf("期望端口 7070, 实际 %d", testCfg.Server.Port)
+	}
+	if testCfg.Logger.Level != "warn" {
+		t.Errorf("期望日志级别 warn, 实际 %s", testCfg.Logger.Level)
+	}
+}
+
+// 场景12：环境变量注入
+func TestScenario12_EnvOverride(t *testing.T) {
+	type EnvTestConfig struct {
+		Server struct {
+			Port int    `yaml:"port" json:"port" ini:"port" env:"SERVER_PORT"`
+			Host string `yaml:"host" json:"host" ini:"host" env:"SERVER_HOST"`
+		} `yaml:"server" json:"server" ini:"server"`
+	}
+
+	os.Setenv("SERVER_PORT", "9999")
+	os.Setenv("SERVER_HOST", "localhost")
+	defer os.Unsetenv("SERVER_PORT")
+	defer os.Unsetenv("SERVER_HOST")
+
+	cfg := &EnvTestConfig{}
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(testDataPath); err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*EnvTestConfig)
+	if testCfg.Server.Port != 9999 {
+		t.Errorf("期望端口 9999 (环境变量), 实际 %d", testCfg.Server.Port)
+	}
+	if testCfg.Server.Host != "localhost" {
+		t.Errorf("期望主机 localhost (环境变量), 实际 %s", testCfg.Server.Host)
+	}
+}
+
+// 场景13：配置变更回调
+func TestScenario13_OnChangeCallback(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_callback.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	callbackCalled := false
+	cm.OnChange(func(old, new interface{}) {
+		callbackCalled = true
+		oldCfg := old.(*TestConfig)
+		newCfg := new.(*TestConfig)
+		if oldCfg.Server.Port == 8080 && newCfg.Server.Port == 9999 {
+			t.Log("配置变更回调触发成功")
+		}
+	})
+
+	// 修改配置并重载
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	testCfg.Server.Port = 9999
+	cm.SaveConfig()
+
+	if err := cm.ReloadConfig(); err != nil {
+		t.Fatalf("重载配置失败: %v", err)
+	}
+
+	if !callbackCalled {
+		t.Error("配置变更回调未被触发")
+	}
 }

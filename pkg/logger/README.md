@@ -1,14 +1,15 @@
 # Logger - 日志库
 
-基于 [zap](https://github.com/uber-go/zap) 的二次封装，提供更简洁的 API 和开箱即用的日志轮转功能。
+提供统一的日志接口，默认基于 [zap](https://github.com/uber-go/zap) 实现，支持自定义日志替换。
 
 ## 特性
 
-- 基于高性能的 zap 封装
-- 开箱即用的默认 logger
-- 支持日志轮转（按时间/按大小）
-- 动态调整日志级别
-- 完整的 zap 选项支持
+-   统一的日志接口抽象，支持自定义实现（如 logrus 等）
+-   默认基于高性能的 zap 实现
+-   开箱即用的默认 logger
+-   支持日志轮转（按时间/按大小）
+-   动态调整日志级别
+-   完整的 zap 选项支持
 
 ## 安装
 
@@ -33,7 +34,7 @@ import (
 
 func main() {
     defer log.Sync()
-    
+
     log.Info("Info msg")
     log.Warn("Warn msg", log.Int("attempt", 3))
     log.Error("Error msg", log.Duration("backoff", time.Second))
@@ -55,6 +56,49 @@ log.Error("会输出")
 file, _ := os.OpenFile("custom.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 logger := log.New(file, log.InfoLevel)
 log.ReplaceDefault(logger)
+```
+
+### 使用自定义日志实现
+
+支持替换为任意实现了 `logger.Interface` 接口的日志库：
+
+```go
+package main
+
+import (
+    log "github.com/junbin-yang/go-kitbox/pkg/logger"
+)
+
+// CustomLogger 自定义日志实现（如 logrus、zerolog 等）
+type CustomLogger struct {
+    // 你的日志实现
+}
+
+func (c *CustomLogger) Debug(msg string, fields ...log.Field) { /* 实现 */ }
+func (c *CustomLogger) Info(msg string, fields ...log.Field)  { /* 实现 */ }
+func (c *CustomLogger) Warn(msg string, fields ...log.Field)  { /* 实现 */ }
+func (c *CustomLogger) Error(msg string, fields ...log.Field) { /* 实现 */ }
+func (c *CustomLogger) Panic(msg string, fields ...log.Field) { /* 实现 */ }
+func (c *CustomLogger) Fatal(msg string, fields ...log.Field) { /* 实现 */ }
+
+func (c *CustomLogger) Debugf(format string, v ...interface{}) { /* 实现 */ }
+func (c *CustomLogger) Infof(format string, v ...interface{})  { /* 实现 */ }
+func (c *CustomLogger) Warnf(format string, v ...interface{})  { /* 实现 */ }
+func (c *CustomLogger) Errorf(format string, v ...interface{}) { /* 实现 */ }
+func (c *CustomLogger) Panicf(format string, v ...interface{}) { /* 实现 */ }
+func (c *CustomLogger) Fatalf(format string, v ...interface{}) { /* 实现 */ }
+
+func (c *CustomLogger) SetLevel(level log.Level) { /* 实现 */ }
+func (c *CustomLogger) Sync() error              { return nil }
+
+func main() {
+    // 替换为自定义实现
+    custom := &CustomLogger{}
+    log.ReplaceDefault(custom)
+
+    // 使用统一的API
+    log.Info("使用自定义日志实现")
+}
 ```
 
 ## 日志轮转
@@ -83,10 +127,11 @@ func main() {
 ```
 
 **默认配置：**
-- 轮转间隔：24 小时
-- 保留时间：30 天
-- 时间格式：UTC
-- 文件命名：`app.2024-01-15-10-30-00.log`
+
+-   轮转间隔：24 小时
+-   保留时间：30 天
+-   时间格式：UTC
+-   文件命名：`app.2024-01-15-10-30-00.log`
 
 ### 按大小轮转
 
@@ -111,10 +156,11 @@ func main() {
 ```
 
 **默认配置：**
-- 单文件大小：100 MB
-- 保留文件数：100 个
-- 保留时间：30 天
-- 自动压缩：是
+
+-   单文件大小：100 MB
+-   保留文件数：100 个
+-   保留时间：30 天
+-   自动压缩：是
 
 ### 自定义轮转配置
 
@@ -136,7 +182,7 @@ func main() {
     }
     out := log.NewRotateByTime(cfg)
     logger := log.New(out, log.InfoLevel)
-    
+
     // 自定义按大小轮转
     cfg2 := &log.RotateConfig{
         Filename:   "size.log",
@@ -148,7 +194,7 @@ func main() {
     }
     out2 := log.NewRotateBySize(cfg2)
     logger2 := log.New(out2, log.InfoLevel)
-    
+
     logger.Info("按时间轮转")
     logger2.Info("按大小轮转")
 }
@@ -156,15 +202,15 @@ func main() {
 
 ### 轮转配置说明
 
-| 配置项 | 类型 | 说明 | 默认值 |
-|--------|------|------|--------|
-| `Filename` | string | 日志文件路径 | - |
-| `MaxAge` | int | 保留天数 | 30 |
-| `RotationTime` | Duration | 轮转间隔（按时间） | 24h |
-| `MaxSize` | int | 单文件大小 MB（按大小） | 100 |
-| `MaxBackups` | int | 保留文件数（按大小） | 100 |
-| `Compress` | bool | 是否压缩（按大小） | true |
-| `LocalTime` | bool | 使用本地时间 | false |
+| 配置项         | 类型     | 说明                    | 默认值 |
+| -------------- | -------- | ----------------------- | ------ |
+| `Filename`     | string   | 日志文件路径            | -      |
+| `MaxAge`       | int      | 保留天数                | 30     |
+| `RotationTime` | Duration | 轮转间隔（按时间）      | 24h    |
+| `MaxSize`      | int      | 单文件大小 MB（按大小） | 100    |
+| `MaxBackups`   | int      | 保留文件数（按大小）    | 100    |
+| `Compress`     | bool     | 是否压缩（按大小）      | true   |
+| `LocalTime`    | bool     | 使用本地时间            | false  |
 
 ## 高级用法
 
@@ -177,7 +223,7 @@ import (
     "fmt"
     "io"
     "os"
-    
+
     "go.uber.org/zap/zapcore"
     log "github.com/junbin-yang/go-kitbox/pkg/logger"
 )
@@ -224,24 +270,47 @@ log.Errorf("Failed to connect: %v", err)
 
 ### 日志级别
 
-- `DebugLevel` - 调试信息
-- `InfoLevel` - 一般信息
-- `WarnLevel` - 警告信息
-- `ErrorLevel` - 错误信息
-- `PanicLevel` - Panic 级别
-- `FatalLevel` - Fatal 级别
+-   `DebugLevel` - 调试信息
+-   `InfoLevel` - 一般信息
+-   `WarnLevel` - 警告信息
+-   `ErrorLevel` - 错误信息
+-   `PanicLevel` - Panic 级别
+-   `FatalLevel` - Fatal 级别
 
 ### 核心方法
 
-| 方法 | 说明 |
-|------|------|
-| `New(out, level, opts...)` | 创建新 logger |
-| `Default()` | 获取默认 logger |
-| `ReplaceDefault(logger)` | 替换默认 logger |
-| `SetLevel(level)` | 设置日志级别 |
-| `Debug/Info/Warn/Error/Panic/Fatal(msg, fields...)` | 结构化日志 |
-| `Debugf/Infof/Warnf/Errorf/Panicf/Fatalf(format, args...)` | 格式化日志 |
-| `Sync()` | 刷新缓冲区 |
+| 方法                                                       | 说明                              |
+| ---------------------------------------------------------- | --------------------------------- |
+| `New(out, level, opts...)`                                 | 创建新 zap logger                 |
+| `Default()`                                                | 获取默认 logger（返回 Interface） |
+| `ReplaceDefault(logger)`                                   | 替换默认 logger（接受 Interface） |
+| `SetLevel(level)`                                          | 设置日志级别                      |
+| `Debug/Info/Warn/Error/Panic/Fatal(msg, fields...)`        | 结构化日志                        |
+| `Debugf/Infof/Warnf/Errorf/Panicf/Fatalf(format, args...)` | 格式化日志                        |
+| `Sync()`                                                   | 刷新缓冲区                        |
+
+### 接口定义
+
+```go
+type Interface interface {
+    Debug(msg string, fields ...Field)
+    Info(msg string, fields ...Field)
+    Warn(msg string, fields ...Field)
+    Error(msg string, fields ...Field)
+    Panic(msg string, fields ...Field)
+    Fatal(msg string, fields ...Field)
+
+    Debugf(format string, v ...interface{})
+    Infof(format string, v ...interface{})
+    Warnf(format string, v ...interface{})
+    Errorf(format string, v ...interface{})
+    Panicf(format string, v ...interface{})
+    Fatalf(format string, v ...interface{})
+
+    SetLevel(level Level)
+    Sync() error
+}
+```
 
 ### 字段类型
 
@@ -250,21 +319,32 @@ log.Errorf("Failed to connect: %v", err)
 ## 最佳实践
 
 1. **程序退出前调用 Sync**：确保日志完全写入
-   ```go
-   defer log.Sync()
-   ```
+
+    ```go
+    defer log.Sync()
+    ```
 
 2. **使用结构化日志**：便于日志分析
-   ```go
-   log.Info("operation", log.String("op", "create"), log.Int("id", 123))
-   ```
+
+    ```go
+    log.Info("operation", log.String("op", "create"), log.Int("id", 123))
+    ```
 
 3. **生产环境使用日志轮转**：避免日志文件过大
-   ```go
-   out := log.NewProductionRotateBySize("app.log")
-   ```
+
+    ```go
+    out := log.NewProductionRotateBySize("app.log")
+    ```
 
 4. **合理设置日志级别**：开发用 Debug，生产用 Info
+
+5. **使用接口抽象**：便于切换不同日志实现，提升代码可测试性
+    ```go
+    // 定义依赖接口而非具体实现
+    type Service struct {
+        logger logger.Interface
+    }
+    ```
 
 ## 许可证
 

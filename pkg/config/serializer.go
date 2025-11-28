@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 
+	"gopkg.in/ini.v1"
 	"gopkg.in/yaml.v2"
 )
 
@@ -50,4 +52,35 @@ func (j *JSONSerializer) GetFileExt() string {
 
 func (j *JSONSerializer) GetName() string {
 	return "json"
+}
+
+// INISerializer INI序列化实现
+type INISerializer struct{}
+
+func (i *INISerializer) Marshal(v interface{}) ([]byte, error) {
+	cfg := ini.Empty()
+	if err := cfg.ReflectFrom(v); err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if _, err := cfg.WriteTo(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (i *INISerializer) Unmarshal(data []byte, v interface{}) error {
+	cfg, err := ini.Load(data)
+	if err != nil {
+		return err
+	}
+	return cfg.MapTo(v)
+}
+
+func (i *INISerializer) GetFileExt() string {
+	return ".ini"
+}
+
+func (i *INISerializer) GetName() string {
+	return "ini"
 }

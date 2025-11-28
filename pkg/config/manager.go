@@ -32,6 +32,9 @@ type ConfigManager struct {
 	watcher               *fsnotify.Watcher // 文件监听器
 	watchQuit             chan struct{}     // 监听退出信号
 	watchOnce             sync.Once         // 确保监听只启动一次
+
+	// 配置变更回调
+	callbacks []func(old, new interface{})
 }
 
 // NewConfigManager 创建配置管理器实例
@@ -50,7 +53,7 @@ func NewConfigManager(cfg interface{}, options ...Option) *ConfigManager {
 		instance:         cfg,
 		appName:          "app",
 		serializer:       &YAMLSerializer{},
-		supportedFormats: []Serializer{&YAMLSerializer{}, &JSONSerializer{}},
+		supportedFormats: []Serializer{&YAMLSerializer{}, &JSONSerializer{}, &INISerializer{}},
 		defaultPaths: []string{
 			"./{{.AppName}}",
 			"{{.ExecDir}}/{{.AppName}}",
@@ -99,7 +102,13 @@ func (cm *ConfigManager) LoadConfig(customPath string) error {
 			return
 		}
 
-		// 4. 启动配置监听（如果启用）
+		// 4. 应用环境变量覆盖
+		if err = applyEnvOverrides(cm.instance); err != nil {
+			cm.loadErr = fmt.Errorf("apply env overrides failed: %w", err)
+			return
+		}
+
+		// 5. 启动配置监听（如果启用）
 		if cm.enableWatch {
 			_ = cm.startWatch()
 		}
@@ -169,25 +178,45 @@ func (cm *ConfigManager) ReloadConfig() error {
 	}
 
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
 
 	// 创建新实例避免覆盖原数据
 	newInstance := cm.createNewInstance()
 	if newInstance == nil {
+		cm.mu.Unlock()
 		return errors.New("create new config instance failed")
 	}
 
 	// 读取并解析配置
 	data, err := ioutil.ReadFile(currentPath)
 	if err != nil {
+		cm.mu.Unlock()
 		return fmt.Errorf("read config file failed: %w", err)
 	}
 	if err := cm.serializer.Unmarshal(data, newInstance); err != nil {
+		cm.mu.Unlock()
 		return fmt.Errorf("unmarshal config failed: %w", err)
 	}
 
+	// 应用环境变量覆盖
+	if err := applyEnvOverrides(newInstance); err != nil {
+		cm.mu.Unlock()
+		return fmt.Errorf("apply env overrides failed: %w", err)
+	}
+
+	oldInstance := cm.instance
 	cm.instance = newInstance
 	cm.loadErr = nil
+
+	// 复制回调列表（避免死锁）
+	callbacks := make([]func(old, new interface{}), len(cm.callbacks))
+	copy(callbacks, cm.callbacks)
+	cm.mu.Unlock()
+
+	// 触发配置变更回调（在锁外执行）
+	for _, callback := range callbacks {
+		callback(oldInstance, newInstance)
+	}
+
 	return nil
 }
 
@@ -209,6 +238,25 @@ func (cm *ConfigManager) EnableWatch(enable bool) error {
 func (cm *ConfigManager) Close() {
 	cm.stopWatch()
 	close(cm.watchQuit)
+}
+
+// OnChange 注册配置变更回调
+func (cm *ConfigManager) OnChange(callback func(old, new interface{})) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.callbacks = append(cm.callbacks, callback)
+}
+
+// triggerCallbacks 触发所有配置变更回调
+func (cm *ConfigManager) triggerCallbacks(old, new interface{}) {
+	cm.mu.RLock()
+	callbacks := make([]func(old, new interface{}), len(cm.callbacks))
+	copy(callbacks, cm.callbacks)
+	cm.mu.RUnlock()
+
+	for _, callback := range callbacks {
+		callback(old, new)
+	}
 }
 
 /* ------------------------------ 内部方法 ------------------------------ */
