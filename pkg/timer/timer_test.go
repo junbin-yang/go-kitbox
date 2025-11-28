@@ -65,7 +65,7 @@ func TestScenario3_RemoveTimer(t *testing.T) {
 	defer mgr.StopAll()
 
 	var count int32
-	mgr.CreateTimer("test", 50*time.Millisecond, func() {
+	_ = mgr.CreateTimer("test", 50*time.Millisecond, func() {
 		atomic.AddInt32(&count, 1)
 	})
 
@@ -91,7 +91,7 @@ func TestScenario4_ResetTimer(t *testing.T) {
 	defer mgr.StopAll()
 
 	var count int32
-	mgr.CreateTimer("test", 100*time.Millisecond, func() {
+	_ = mgr.CreateTimer("test", 100*time.Millisecond, func() {
 		atomic.AddInt32(&count, 1)
 	})
 
@@ -117,7 +117,7 @@ func TestScenario5_ResetOnceTimer(t *testing.T) {
 	defer mgr.StopAll()
 
 	var executed int32
-	mgr.CreateOnceTimer("once", 500*time.Millisecond, func() {
+	_ = mgr.CreateOnceTimer("once", 500*time.Millisecond, func() {
 		atomic.AddInt32(&executed, 1)
 	})
 
@@ -138,7 +138,7 @@ func TestScenario6_GetTimer(t *testing.T) {
 	mgr := NewManager()
 	defer mgr.StopAll()
 
-	mgr.CreateTimer("test", 100*time.Millisecond, func() {})
+	_ = mgr.CreateTimer("test", 100*time.Millisecond, func() {})
 
 	info, exists := mgr.GetTimer("test")
 	if !exists {
@@ -163,16 +163,16 @@ func TestScenario7_ListTimers(t *testing.T) {
 	mgr := NewManager()
 	defer mgr.StopAll()
 
-	mgr.CreateTimer("timer1", 100*time.Millisecond, func() {})
-	mgr.CreateTimer("timer2", 200*time.Millisecond, func() {})
-	mgr.CreateOnceTimer("once1", time.Second, func() {})
+	_ = mgr.CreateTimer("timer1", 100*time.Millisecond, func() {})
+	_ = mgr.CreateTimer("timer2", 200*time.Millisecond, func() {})
+	_ = mgr.CreateOnceTimer("once1", time.Second, func() {})
 
 	ids := mgr.ListTimers()
 	if len(ids) != 3 {
 		t.Errorf("期望3个定时器，实际 %d 个", len(ids))
 	}
 
-	mgr.RemoveTimer("timer1")
+	_ = mgr.RemoveTimer("timer1")
 	ids = mgr.ListTimers()
 	if len(ids) != 2 {
 		t.Errorf("移除后期望2个定时器，实际 %d 个", len(ids))
@@ -405,7 +405,7 @@ func TestScenario19_OnceTimerAutoRemove(t *testing.T) {
 	mgr := NewManager()
 	defer mgr.StopAll()
 
-	mgr.CreateOnceTimer("once", 100*time.Millisecond, func() {})
+	_ = mgr.CreateOnceTimer("once", 100*time.Millisecond, func() {})
 
 	if mgr.GetTimerCount() != 1 {
 		t.Error("创建后应有1个定时器")

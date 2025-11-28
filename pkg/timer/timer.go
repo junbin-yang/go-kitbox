@@ -100,7 +100,7 @@ func (m *Manager) CreateOnceTimer(id string, delay time.Duration, callback func(
 		select {
 		case <-time.After(delay): // 延迟后执行回调
 			m.safeCallback(callback)
-			m.RemoveTimer(id) // 执行后自动移除
+			_ = m.RemoveTimer(id) // 执行后自动移除
 		case <-timer.stopChan: // 被主动停止
 			return
 		case <-m.ctx.Done(): // 管理器被停止
@@ -188,7 +188,7 @@ func (m *Manager) ResetTimer(id string, newInterval time.Duration) error {
 			select {
 			case <-time.After(newInterval):
 				m.safeCallback(timer.callback)
-				m.RemoveTimer(id)
+				_ = m.RemoveTimer(id)
 			case <-timer.stopChan:
 				return
 			case <-m.ctx.Done():

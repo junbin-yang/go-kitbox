@@ -40,8 +40,8 @@ func TestPriorityQueue_StarvationPrevention(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		lowTask := newTask(func(ctx context.Context) error { return nil }, WithPriority(10))
 		highTask := newTask(func(ctx context.Context) error { return nil }, WithPriority(90))
-		pq.Push(lowTask, false)
-		pq.Push(highTask, false)
+		_ = pq.Push(lowTask, false)
+		_ = pq.Push(highTask, false)
 	}
 
 	lowCount := 0
