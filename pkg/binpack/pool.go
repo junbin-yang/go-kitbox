@@ -12,7 +12,8 @@ func NewBufferPool(size int) *BufferPool {
 	return &BufferPool{
 		pool: sync.Pool{
 			New: func() interface{} {
-				return make([]byte, size)
+				buf := make([]byte, size)
+				return &buf
 			},
 		},
 	}
@@ -20,12 +21,12 @@ func NewBufferPool(size int) *BufferPool {
 
 // Get 从池中获取 buffer
 func (p *BufferPool) Get() []byte {
-	return p.pool.Get().([]byte)
+	return *p.pool.Get().(*[]byte)
 }
 
 // Put 将 buffer 放回池中
 func (p *BufferPool) Put(buf *[]byte) {
-	p.pool.Put(*buf)
+	p.pool.Put(buf)
 }
 
 // DefaultBufferPool 默认 buffer 池（1KB）
