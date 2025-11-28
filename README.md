@@ -1,5 +1,10 @@
 # go-kitbox
 
+[![CI](https://github.com/junbin-yang/go-kitbox/actions/workflows/ci.yml/badge.svg)](https://github.com/junbin-yang/go-kitbox/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/junbin-yang/go-kitbox/branch/master/graph/badge.svg)](https://codecov.io/gh/junbin-yang/go-kitbox)
+[![Go Report Card](https://goreportcard.com/badge/github.com/junbin-yang/go-kitbox)](https://goreportcard.com/report/github.com/junbin-yang/go-kitbox)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Go 语言工具库集合，遵循最佳实践，提供一系列实用工具包以简化 Go 应用开发。
 
 ## 安装
