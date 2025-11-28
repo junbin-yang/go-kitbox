@@ -182,6 +182,6 @@ func addrToSocketOption(addr net.Addr) *SocketOption {
 func parseAddr(addr string) (string, int) {
 	var host string
 	var port int
-	fmt.Sscanf(addr, "%s:%d", &host, &port)
+	_ = fmt.Sscanf(addr, "%s:%d", &host, &port)
 	return host, port
 }

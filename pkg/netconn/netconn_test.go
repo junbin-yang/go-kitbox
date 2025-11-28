@@ -17,7 +17,7 @@ func TestTCPClientServer(t *testing.T) {
 		},
 		OnDataReceived: func(fd int, connType ConnectionType, buf []byte, used int) int {
 			t.Logf("Server: received data from fd=%d: %s", fd, string(buf[:used]))
-			server.SendBytes(fd, buf[:used]) // 回显
+			_ = server.SendBytes(fd, buf[:used]) // 回显
 			return used
 		},
 	}
@@ -31,7 +31,7 @@ func TestTCPClientServer(t *testing.T) {
 	if err := server.StartBaseListener(opt, serverCallback); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
-	defer server.StopBaseListener()
+	defer func() { _ = server.StopBaseListener() }()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -98,8 +98,8 @@ func TestGlobalFdAllocation(t *testing.T) {
 func TestClientGetters(t *testing.T) {
 	server := NewBaseServer(nil)
 	opt := &ServerOption{Protocol: ProtocolTCP, Addr: "127.0.0.1", Port: 18081}
-	server.StartBaseListener(opt, &BaseListenerCallback{})
-	defer server.StopBaseListener()
+	_ = server.StartBaseListener(opt, &BaseListenerCallback{})
+	defer func() { _ = server.StopBaseListener() }()
 	time.Sleep(50 * time.Millisecond)
 
 	client := NewBaseClient(nil, &BaseListenerCallback{})
@@ -120,8 +120,8 @@ func TestClientGetters(t *testing.T) {
 func TestServerGetters(t *testing.T) {
 	server := NewBaseServer(nil)
 	opt := &ServerOption{Protocol: ProtocolTCP, Addr: "127.0.0.1", Port: 18082}
-	server.StartBaseListener(opt, &BaseListenerCallback{})
-	defer server.StopBaseListener()
+	_ = server.StartBaseListener(opt, &BaseListenerCallback{})
+	defer func() { _ = server.StopBaseListener() }()
 
 	if server.GetPort() != 18082 {
 		t.Errorf("GetPort() = %d, want 18082", server.GetPort())
@@ -135,8 +135,8 @@ func TestManagerMethods(t *testing.T) {
 	mgr := NewConnectionManager()
 	server := NewBaseServer(mgr)
 	opt := &ServerOption{Protocol: ProtocolTCP, Addr: "127.0.0.1", Port: 18083}
-	server.StartBaseListener(opt, &BaseListenerCallback{})
-	defer server.StopBaseListener()
+	_ = server.StartBaseListener(opt, &BaseListenerCallback{})
+	defer func() { _ = server.StopBaseListener() }()
 	time.Sleep(50 * time.Millisecond)
 
 	client := NewBaseClient(mgr, &BaseListenerCallback{})

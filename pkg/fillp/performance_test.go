@@ -235,7 +235,7 @@ func TestRequestResponseLatency(t *testing.T) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)
@@ -322,7 +322,7 @@ func TestDelayedACKTimeout(t *testing.T) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)
