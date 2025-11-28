@@ -10,7 +10,7 @@ import (
 
 func TestTaskPool_Submit(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(2), WithMaxWorkers(5))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	executed := atomic.Bool{}
 	future := pool.Submit(func(ctx context.Context) error {
@@ -30,7 +30,7 @@ func TestTaskPool_Submit(t *testing.T) {
 
 func TestTaskPool_SubmitAndWait(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(2))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	ctx := context.Background()
 	result, err := pool.SubmitAndWait(ctx, func(ctx context.Context) error {
@@ -49,7 +49,7 @@ func TestTaskPool_SubmitAndWait(t *testing.T) {
 
 func TestTaskPool_Timeout(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(2))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	future := pool.Submit(func(ctx context.Context) error {
 		time.Sleep(200 * time.Millisecond)

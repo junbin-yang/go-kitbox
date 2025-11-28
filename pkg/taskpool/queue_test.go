@@ -59,16 +59,16 @@ func TestRingQueue_BlockingPush(t *testing.T) {
 	task1 := newTask(func(ctx context.Context) error { return nil })
 	task2 := newTask(func(ctx context.Context) error { return nil })
 
-	q.Push(task1, false)
+	_ = q.Push(task1, false)
 
 	done := make(chan bool)
 	go func() {
-		q.Push(task2, true)
+		_ = q.Push(task2, true)
 		done <- true
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	q.Pop(false)
+	_, _ = q.Pop(false)
 
 	select {
 	case <-done:
@@ -90,7 +90,7 @@ func TestRingQueue_BlockingPop(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond)
-	q.Push(task, false)
+	_ = q.Push(task, false)
 
 	select {
 	case popped := <-done:

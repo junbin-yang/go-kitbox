@@ -188,8 +188,8 @@ func TestScenario8_GetTimerCount(t *testing.T) {
 		t.Error("初始应无定时器")
 	}
 
-	mgr.CreateTimer("t1", 100*time.Millisecond, func() {})
-	mgr.CreateTimer("t2", 100*time.Millisecond, func() {})
+	_ = mgr.CreateTimer("t1", 100*time.Millisecond, func() {})
+	_ = mgr.CreateTimer("t2", 100*time.Millisecond, func() {})
 
 	if mgr.GetTimerCount() != 2 {
 		t.Errorf("期望2个定时器，实际 %d 个", mgr.GetTimerCount())

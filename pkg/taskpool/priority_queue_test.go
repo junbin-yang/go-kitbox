@@ -71,7 +71,7 @@ func TestPriorityQueue_Len(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		task := newTask(func(ctx context.Context) error { return nil }, WithPriority(i*20))
-		pq.Push(task, false)
+		_ = pq.Push(task, false)
 	}
 
 	if pq.Len() != 5 {
