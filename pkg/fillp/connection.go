@@ -424,7 +424,10 @@ func (c *Connection) Close() error {
 	c.logger.Debugf("Closing connection")
 
 	// 发送FIN包通知对方关闭连接
-	c.sendFin()
+	err := c.sendFin()
+	if err != nil {
+		return err
+	}
 
 	// 取消上下文
 	c.cancel()
@@ -657,7 +660,7 @@ func (c *Connection) receiveWorker() {
 		default:
 			// 设置读取超时
 			if deadline, ok := c.conn.(interface{ SetReadDeadline(time.Time) error }); ok {
-				deadline.SetReadDeadline(time.Now().Add(1 * time.Second))
+				_ = deadline.SetReadDeadline(time.Now().Add(1 * time.Second))
 			}
 
 			// 读取数据包
@@ -789,14 +792,14 @@ func (c *Connection) handleDataPacket(packet *Packet) {
 
 	// 忽略空数据包：不推进序列，回显当前累计ACK，避免状态卡死
 	if len(packet.Data) == 0 {
-		c.sendAckPacket(c.receiveSeq, packet.Timestamp)
+		_ = c.sendAckPacket(c.receiveSeq, packet.Timestamp)
 		return
 	}
 	// 检查序列号是否合法（简化：只处理连续的序列号）
 	if packet.Sequence != c.receiveSeq {
 		c.logger.Warnf("Out-of-order data packet: expected=%d received=%d", c.receiveSeq, packet.Sequence)
 		// 发送重复ACK
-		c.sendAckPacket(c.receiveSeq, packet.Timestamp)
+		_ = c.sendAckPacket(c.receiveSeq, packet.Timestamp)
 		c.stats.DuplicateAcks++
 		return
 	}
@@ -814,7 +817,7 @@ func (c *Connection) handleDataPacket(packet *Packet) {
 	// 如果有待发送数据，立即发送ACK（捎带优化）
 	if c.sendBuffer.Readable() > 0 {
 		// 有数据待发送，立即发送ACK（数据包会捎带ACK）
-		c.sendAckPacket(c.receiveSeq, packet.Timestamp)
+		_ = c.sendAckPacket(c.receiveSeq, packet.Timestamp)
 		if c.ackTimer != nil {
 			c.ackTimer.Stop()
 		}
@@ -1081,7 +1084,7 @@ func (c *Connection) sendKeepAlive() {
 		Ack:       c.receiveSeq,
 		Timestamp: uint32(time.Since(c.createdTime).Milliseconds()),
 	}
-	c.sendPacket(packet)
+	_ = c.sendPacket(packet)
 }
 
 // updateRTT 更新RTT(往返时间)估计

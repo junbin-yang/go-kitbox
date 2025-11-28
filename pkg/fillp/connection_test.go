@@ -82,7 +82,7 @@ func TestScenario3_SendReceive(t *testing.T) {
 	defer server.Close()
 
 	// 启动服务端
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	// 创建客户端
@@ -126,7 +126,7 @@ func TestScenario4_LargeDataTransfer(t *testing.T) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)
@@ -181,7 +181,7 @@ func TestScenario5_CloseConnection(t *testing.T) {
 		t.Fatalf("创建服务端失败: %v", err)
 	}
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)
@@ -218,7 +218,7 @@ func TestScenario6_GetStatistics(t *testing.T) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)
@@ -323,7 +323,7 @@ func TestScenario10_ConcurrentSendReceive(t *testing.T) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)

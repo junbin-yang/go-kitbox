@@ -164,7 +164,7 @@ func TestWorker_StopFunc(t *testing.T) {
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go worker.Run(ctx)
+	go func() { _ = worker.Run(ctx) }()
 
 	time.Sleep(50 * time.Millisecond)
 	cancel()

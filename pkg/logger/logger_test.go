@@ -3,7 +3,7 @@ package logger
 import "testing"
 
 func Test_LOG(t *testing.T) {
-	defer Sync()
+	defer func() { _ = Sync() }()
 	Info("Info msg")
 	Warn("Warn msg")
 	Error("Error msg")
@@ -13,20 +13,20 @@ func Test_LOG(t *testing.T) {
 // CustomLogger 自定义日志实现示例
 type CustomLogger struct{}
 
-func (c *CustomLogger) Debug(msg string, fields ...Field)              {}
-func (c *CustomLogger) Info(msg string, fields ...Field)               {}
-func (c *CustomLogger) Warn(msg string, fields ...Field)               {}
-func (c *CustomLogger) Error(msg string, fields ...Field)              {}
-func (c *CustomLogger) Panic(msg string, fields ...Field)              {}
-func (c *CustomLogger) Fatal(msg string, fields ...Field)              {}
-func (c *CustomLogger) Debugf(format string, v ...interface{})         {}
-func (c *CustomLogger) Infof(format string, v ...interface{})          {}
-func (c *CustomLogger) Warnf(format string, v ...interface{})          {}
-func (c *CustomLogger) Errorf(format string, v ...interface{})         {}
-func (c *CustomLogger) Panicf(format string, v ...interface{})         {}
-func (c *CustomLogger) Fatalf(format string, v ...interface{})         {}
-func (c *CustomLogger) SetLevel(level Level)                           {}
-func (c *CustomLogger) Sync() error                                    { return nil }
+func (c *CustomLogger) Debug(msg string, fields ...Field)      {}
+func (c *CustomLogger) Info(msg string, fields ...Field)       {}
+func (c *CustomLogger) Warn(msg string, fields ...Field)       {}
+func (c *CustomLogger) Error(msg string, fields ...Field)      {}
+func (c *CustomLogger) Panic(msg string, fields ...Field)      {}
+func (c *CustomLogger) Fatal(msg string, fields ...Field)      {}
+func (c *CustomLogger) Debugf(format string, v ...interface{}) {}
+func (c *CustomLogger) Infof(format string, v ...interface{})  {}
+func (c *CustomLogger) Warnf(format string, v ...interface{})  {}
+func (c *CustomLogger) Errorf(format string, v ...interface{}) {}
+func (c *CustomLogger) Panicf(format string, v ...interface{}) {}
+func (c *CustomLogger) Fatalf(format string, v ...interface{}) {}
+func (c *CustomLogger) SetLevel(level Level)                   {}
+func (c *CustomLogger) Sync() error                            { return nil }
 
 func Test_CustomLogger(t *testing.T) {
 	// 替换为自定义日志实现
@@ -62,4 +62,3 @@ func Test_LevelMapping(t *testing.T) {
 		t.Errorf("FatalLevel mapping failed: got %d, want 5", toZapLevel(FatalLevel))
 	}
 }
-
