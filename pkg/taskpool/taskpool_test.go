@@ -161,7 +161,7 @@ func TestTaskPool_BatchSubmit(t *testing.T) {
 
 func TestTaskPool_Resize(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(2), WithMaxWorkers(10))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	if pool.GetWorkerCount() != 2 {
 		t.Errorf("Initial worker count = %d, want 2", pool.GetWorkerCount())
@@ -187,7 +187,7 @@ func TestTaskPool_AutoScale(t *testing.T) {
 		WithAutoScale(true),
 		WithScaleInterval(100*time.Millisecond),
 	)
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	scaled := false
 	pool.onWorkerScale = func(oldCount, newCount int) {
@@ -236,7 +236,7 @@ func TestTaskPool_Shutdown(t *testing.T) {
 
 func TestTaskPool_Metrics(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(2))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	for i := 0; i < 5; i++ {
 		pool.Submit(func(ctx context.Context) error {

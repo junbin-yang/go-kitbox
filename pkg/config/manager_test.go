@@ -172,7 +172,7 @@ func TestScenario7_SaveConfig(t *testing.T) {
 
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(cfg)
 	if err := cm.LoadConfig(tmpFile); err != nil {
@@ -215,7 +215,7 @@ func TestScenario8_ReloadConfig(t *testing.T) {
 
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(cfg)
 	if err := cm.LoadConfig(tmpFile); err != nil {
@@ -224,7 +224,7 @@ func TestScenario8_ReloadConfig(t *testing.T) {
 
 	// 修改文件内容
 	// 转换JSON为YAML格式（简化测试，直接用另一个YAML）
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	// 手动重载
 	if err := cm.ReloadConfig(); err != nil {
@@ -383,7 +383,7 @@ func TestScenario13_OnChangeCallback(t *testing.T) {
 	configData, _ := cm.GetConfig()
 	testCfg := configData.(*TestConfig)
 	testCfg.Server.Port = 9999
-	cm.SaveConfig()
+	_ = cm.SaveConfig()
 
 	if err := cm.ReloadConfig(); err != nil {
 		t.Fatalf("重载配置失败: %v", err)

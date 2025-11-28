@@ -112,9 +112,7 @@ func (m *Manager) StopWorker(name string) error {
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), m.shutdownTimeout)
 	defer shutdownCancel()
-	worker.Stop(shutdownCtx)
-
-	return nil
+	return worker.Stop(shutdownCtx)
 }
 
 // OnStartup 注册启动钩子
@@ -260,7 +258,7 @@ func (m *Manager) shutdown() error {
 	for i := len(m.workerOrder) - 1; i >= 0; i-- {
 		name := m.workerOrder[i]
 		worker := m.workers[name]
-		worker.Stop(shutdownCtx)
+		_ = worker.Stop(shutdownCtx)
 	}
 	m.mu.RUnlock()
 
@@ -276,7 +274,7 @@ func (m *Manager) shutdown() error {
 		// 所有协程正常退出
 	case <-shutdownCtx.Done():
 		// 超时
-		m.hooks.callTimeout(shutdownCtx)
+		_ = m.hooks.callTimeout(shutdownCtx)
 		return ErrShutdownTimeout
 	}
 
