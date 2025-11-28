@@ -201,10 +201,10 @@ func TestScenario9_StopAll(t *testing.T) {
 	mgr := NewManager()
 
 	var count1, count2 int32
-	mgr.CreateTimer("t1", 50*time.Millisecond, func() {
+	_ = mgr.CreateTimer("t1", 50*time.Millisecond, func() {
 		atomic.AddInt32(&count1, 1)
 	})
-	mgr.CreateTimer("t2", 50*time.Millisecond, func() {
+	_ = mgr.CreateTimer("t2", 50*time.Millisecond, func() {
 		atomic.AddInt32(&count2, 1)
 	})
 

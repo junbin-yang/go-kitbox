@@ -69,7 +69,7 @@ func TestTaskPool_Priority(t *testing.T) {
 		WithMaxWorkers(1),
 		WithPriorityQueue(true),
 	)
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -114,7 +114,7 @@ func TestTaskPool_Priority(t *testing.T) {
 
 func TestTaskPool_Panic(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(2))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	panicCaught := false
 	pool.onTaskPanic = func(taskID string, recovered interface{}) {
@@ -137,7 +137,7 @@ func TestTaskPool_Panic(t *testing.T) {
 
 func TestTaskPool_BatchSubmit(t *testing.T) {
 	pool := New(WithQueueSize(100), WithMinWorkers(5))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	count := atomic.Int32{}
 	fns := make([]TaskFunc, 10)

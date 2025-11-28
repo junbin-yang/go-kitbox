@@ -135,7 +135,7 @@ func TestRingQueue_Concurrent(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
 				task := newTask(func(ctx context.Context) error { return nil })
-				q.Push(task, true)
+				_ = q.Push(task, true)
 			}
 		}()
 	}
@@ -165,7 +165,7 @@ func TestRingQueue_Close(t *testing.T) {
 	q := NewRingQueue(10)
 
 	task := newTask(func(ctx context.Context) error { return nil })
-	q.Push(task, false)
+	_ = q.Push(task, false)
 
 	q.Close()
 

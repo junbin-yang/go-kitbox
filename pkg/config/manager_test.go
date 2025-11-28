@@ -80,7 +80,7 @@ func TestScenario3_NoExtensionYAML(t *testing.T) {
 	// 创建无后缀配置文件
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(cfg, WithForceFormat(&YAMLSerializer{}))
 	if err := cm.LoadConfig(tmpFile); err != nil {
@@ -103,7 +103,7 @@ func TestScenario4_CustomPathJSON(t *testing.T) {
 	// 创建无后缀JSON配置文件
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.json")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(cfg, WithForceFormat(&JSONSerializer{}))
 	if err := cm.LoadConfig(tmpFile); err != nil {
@@ -125,7 +125,7 @@ func TestScenario5_EnableWatch(t *testing.T) {
 
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
 	data, _ := os.ReadFile(testDataPath)
-	os.WriteFile(tmpFile, data, 0644)
+	_ = os.WriteFile(tmpFile, data, 0644)
 
 	cm := NewConfigManager(
 		cfg,
