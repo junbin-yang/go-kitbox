@@ -54,7 +54,7 @@ func MarshalWithPool(pool *BufferPool, v interface{}) ([]byte, error) {
 	buf := pool.Get()
 	n, err := MarshalTo(buf, v)
 	if err != nil {
-		pool.Put(buf)
+		pool.Put(&buf)
 		return nil, err
 	}
 	return buf[:n], nil
@@ -63,7 +63,7 @@ func MarshalWithPool(pool *BufferPool, v interface{}) ([]byte, error) {
 // MarshalWithPoolCopy 使用 buffer 池编码结构体（带复制）
 func MarshalWithPoolCopy(pool *BufferPool, v interface{}) ([]byte, error) {
 	buf := pool.Get()
-	defer pool.Put(buf)
+	defer pool.Put(&buf)
 	n, err := MarshalTo(buf, v)
 	if err != nil {
 		return nil, err

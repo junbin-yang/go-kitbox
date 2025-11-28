@@ -377,7 +377,7 @@ func BenchmarkMarshalWithPool(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		data, _ := MarshalWithPool(pool, &pkt)
-		pool.Put(data)
+		pool.Put(&data)
 	}
 }
 
