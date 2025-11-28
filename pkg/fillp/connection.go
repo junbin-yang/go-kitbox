@@ -83,11 +83,10 @@ type Connection struct {
 	retransQueue  *RetransmissionQueue // 重传队列
 
 	// 计时器相关
-	rto           time.Duration // 重传超时时间
-	srtt          time.Duration // 平滑RTT(往返时间)
-	rttvar        time.Duration // RTT方差
-	lastActivity  time.Time     // 最后活动时间
-	keepAliveTick *time.Ticker  // 保活计时器
+	rto          time.Duration // 重传超时时间
+	srtt         time.Duration // 平滑RTT(往返时间)
+	rttvar       time.Duration // RTT方差
+	lastActivity time.Time     // 最后活动时间
 
 	// 通道
 	sendReady  chan struct{} // 待发送数据通知通道
@@ -97,11 +96,10 @@ type Connection struct {
 	listenChan chan struct{} // 服务端监听成功的通知通道
 
 	// 延迟确认
-	pendingAck      uint32        // 待发送的ACK序列号
-	pendingAckTS    uint32        // 待发送的ACK时间戳
-	pendingAckRecvT time.Time     // 待发送的ACK接收时间
-	ackTimer        *time.Timer   // ACK延迟定时器
-	delayedAckDur   time.Duration // 延迟ACK时长
+	pendingAck    uint32        // 待发送的ACK序列号
+	pendingAckTS  uint32        // 待发送的ACK时间戳
+	ackTimer      *time.Timer   // ACK延迟定时器
+	delayedAckDur time.Duration // 延迟ACK时长
 
 	// 上下文
 	ctx    context.Context    // 上下文
@@ -151,12 +149,14 @@ func NewConnection(localAddr, remoteAddr net.Addr) (*Connection, error) {
 	if localAddr != nil {
 		// 验证本地地址是否为UDP类型
 		if _, ok := localAddr.(*net.UDPAddr); !ok {
+			cancel()
 			return nil, fmt.Errorf("localAddr must be a UDP address")
 		}
 	}
 	if remoteAddr != nil {
 		// 验证远程地址是否为UDP类型
 		if _, ok := remoteAddr.(*net.UDPAddr); !ok {
+			cancel()
 			return nil, fmt.Errorf("remoteAddr must be a UDP address")
 		}
 	}

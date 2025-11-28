@@ -44,10 +44,6 @@ func (m *Metrics) recordTaskComplete(result *TaskResult) {
 	m.totalExecTime.Add(result.Duration.Nanoseconds())
 }
 
-// recordWaitTime 记录等待时间
-func (m *Metrics) recordWaitTime(waitTime time.Duration) {
-	m.totalWaitTime.Add(waitTime.Nanoseconds())
-}
 
 // snapshot 生成快照
 func (m *Metrics) snapshot(queueLen, runningTasks, activeWorkers int) *MetricsSnapshot {

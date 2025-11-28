@@ -247,17 +247,6 @@ func (cm *ConfigManager) OnChange(callback func(old, new interface{})) {
 	cm.callbacks = append(cm.callbacks, callback)
 }
 
-// triggerCallbacks 触发所有配置变更回调
-func (cm *ConfigManager) triggerCallbacks(old, new interface{}) {
-	cm.mu.RLock()
-	callbacks := make([]func(old, new interface{}), len(cm.callbacks))
-	copy(callbacks, cm.callbacks)
-	cm.mu.RUnlock()
-
-	for _, callback := range callbacks {
-		callback(old, new)
-	}
-}
 
 /* ------------------------------ 内部方法 ------------------------------ */
 

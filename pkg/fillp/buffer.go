@@ -328,9 +328,7 @@ func (rq *RetransmissionQueue) TrimUpTo(ack uint32) {
 			// 非数据包（例如 SYN/FIN 无负载）：用序号规则删除
 			if seq < ack {
 				delete(rq.packets, seq)
-				if _, ok := rq.timer[seq]; ok {
-					delete(rq.timer, seq)
-				}
+				delete(rq.timer, seq)
 			}
 			continue
 		}
@@ -340,9 +338,7 @@ func (rq *RetransmissionQueue) TrimUpTo(ack uint32) {
 			// 无负载：用序号规则删除
 			if seq < ack {
 				delete(rq.packets, seq)
-				if _, ok := rq.timer[seq]; ok {
-					delete(rq.timer, seq)
-				}
+				delete(rq.timer, seq)
 			}
 			continue
 		}
@@ -352,9 +348,7 @@ func (rq *RetransmissionQueue) TrimUpTo(ack uint32) {
 		// 完全确认：删除
 		if end <= ack {
 			delete(rq.packets, seq)
-			if _, ok := rq.timer[seq]; ok {
-				delete(rq.timer, seq)
-			}
+			delete(rq.timer, seq)
 			continue
 		}
 

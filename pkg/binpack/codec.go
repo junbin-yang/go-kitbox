@@ -231,15 +231,6 @@ func encodeByteSlice(buf []byte, v reflect.Value) error {
 	return nil
 }
 
-// decodeByteSlice 解码 []byte
-func decodeByteSlice(size int) func([]byte, reflect.Value) error {
-	return func(data []byte, v reflect.Value) error {
-		slice := make([]byte, size)
-		copy(slice, data[:size])
-		v.Set(reflect.ValueOf(slice))
-		return nil
-	}
-}
 
 // encodeString 编码 string（UTF-8，默认）- 零拷贝优化
 func encodeString(buf []byte, v reflect.Value) error {
