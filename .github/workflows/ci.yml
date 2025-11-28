@@ -21,6 +21,7 @@ jobs:
               uses: golangci/golangci-lint-action@v3
               with:
                   version: latest
+                  args: ./pkg/... ./internal/...
 
     test:
         runs-on: ubuntu-latest
