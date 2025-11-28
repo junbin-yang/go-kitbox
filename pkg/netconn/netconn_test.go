@@ -140,7 +140,7 @@ func TestManagerMethods(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	client := NewBaseClient(mgr, &BaseListenerCallback{})
-	_ = client.ConnectSimple(ProtocolTCP, "127.0.0.1", 18083)
+	_, _ = client.ConnectSimple(ProtocolTCP, "127.0.0.1", 18083)
 	time.Sleep(100 * time.Millisecond)
 
 	if mgr.GetConnCount() == 0 {
