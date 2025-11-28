@@ -655,7 +655,16 @@ cd pkg/binpack/generator/cmd/binpack-cli
 go build -o binpack-cli
 ```
 
-### 子命令
+### 子命令概览
+
+| 命令       | 功能                           | 用途                     |
+| ---------- | ------------------------------ | ------------------------ |
+| `gen`      | 生成静态编解码代码             | 消除反射开销，提升性能   |
+| `docs`     | 生成协议文档                   | 协议规范文档化           |
+| `debug`    | 可视化调试二进制数据           | 排查编解码问题           |
+| `validate` | 验证结构体标签合法性           | 提前发现标签定义错误     |
+
+### 子命令详解
 
 #### 1. gen - 代码生成
 
@@ -830,6 +839,144 @@ Byte Mapping:
 - `?` - ASCII 视图中缺失数据的位置
 - `❌` - 字段解析中的错误标记
 - `!!! ERROR !!!` - 明确的错误提示文本
+
+#### 4. validate - 结构体标签验证
+
+静态检查结构体标签的合法性，在编码/解码前提前发现错误。
+
+```bash
+binpack-cli validate -pkg <package> [-type <struct>]
+```
+
+**参数：**
+-   `-pkg`: 包路径
+-   `-type`: 结构体类型名（可选，不指定则验证包内所有结构体）
+
+**示例：**
+
+```bash
+# 验证整个包
+binpack-cli validate -pkg ./mypackage
+
+# 验证特定类型
+binpack-cli validate -pkg ./mypackage -type Packet
+```
+
+**验证项目：**
+
+1. **偏移量冲突检测**：检测字段偏移量是否冲突（位字段和条件字段可共享）
+2. **依赖字段存在性**：验证 `len` 和 `if` 引用的字段是否存在
+3. **字段顺序验证**：确保依赖字段在当前字段之前定义
+4. **变长字段检查**：确保变长字段指定了 `len` 字段
+5. **数组字段检查**：确保 `repeat` 字段指定了 `len` 字段
+6. **字段重叠检测**：检测字段是否重叠（跳过位字段和条件字段）
+
+**输出示例（验证通过）：**
+
+```
+✓ All struct tags are valid
+```
+
+**输出示例（验证失败）：**
+
+```
+  invalid.go: struct InvalidPacket, field Field2: offset 0 conflicts with field Field1
+  invalid.go: struct MissingLenPacket, field Data: length field Length does not exist
+Validation failed: found 2 validation error(s)
+```
+
+**常见错误类型：**
+
+```go
+// ❌ 偏移量冲突
+type BadPacket1 struct {
+    Field1 uint16 `bin:"0:2:be"`
+    Field2 uint8  `bin:"0:1"`  // 错误：偏移量 0 与 Field1 冲突
+}
+
+// ❌ 缺失长度字段
+type BadPacket2 struct {
+    Type uint8  `bin:"0:1"`
+    Data []byte `bin:"1:var,len:Length"` // 错误：Length 字段不存在
+}
+
+// ❌ 字段顺序错误
+type BadPacket3 struct {
+    Data   []byte `bin:"0:var,len:Length"` // 错误：Length 必须在 Data 之前
+    Length uint16 `bin:"10:2:be"`
+}
+
+// ❌ 变长字段未指定 len
+type BadPacket4 struct {
+    Type uint8  `bin:"0:1"`
+    Data []byte `bin:"1:var"` // 错误：变长字段必须指定 len
+}
+
+// ❌ 字段重叠
+type BadPacket5 struct {
+    Field1 uint32 `bin:"0:4:be"` // 占用 0-3
+    Field2 uint16 `bin:"2:2:be"` // 错误：占用 2-3，与 Field1 重叠
+}
+
+// ✅ 正确：位字段可以共享偏移量
+type GoodPacket struct {
+    Status uint8 `bin:"0:1"`
+    Bit0   uint8 `bin:"1:1,bits:0"`   // 正确：位字段可以共享
+    Bit12  uint8 `bin:"1:1,bits:1-2"` // 正确：位字段可以共享
+}
+
+// ✅ 正确：条件字段可以共享偏移量
+type GoodPacket2 struct {
+    Type  uint8  `bin:"0:1"`
+    Data1 uint32 `bin:"1:4:be,if:Type==1"` // 正确：条件字段可以共享
+    Data2 uint32 `bin:"1:4:be,if:Type==2"` // 正确：条件字段可以共享
+}
+```
+
+**集成到编解码流程：**
+
+validate 功能已自动集成到 `Marshal`、`Unmarshal` 和 `MarshalTo` 函数中：
+
+```go
+type Packet struct {
+    Field1 uint16 `bin:"0:2:be"`
+    Field2 uint8  `bin:"0:1"` // 偏移量冲突
+}
+
+// 编码时会自动验证
+data, err := binpack.Marshal(&Packet{})
+if err != nil {
+    // 输出: field Field2: offset 0 conflicts with field Field1
+    log.Fatal(err)
+}
+
+// 也可以手动验证
+if err := binpack.ValidateStruct(Packet{}); err != nil {
+    log.Fatal(err)
+}
+```
+
+**最佳实践：**
+
+1. **开发阶段**：使用 CLI 工具验证所有协议定义
+   ```bash
+   binpack-cli validate -pkg ./protocol
+   ```
+
+2. **CI/CD 集成**：在持续集成中添加验证步骤
+   ```bash
+   # 在 CI 脚本中
+   binpack-cli validate -pkg ./protocol || exit 1
+   ```
+
+3. **单元测试**：为关键协议添加验证测试
+   ```go
+   func TestProtocolValidation(t *testing.T) {
+       if err := binpack.ValidateStruct(MyPacket{}); err != nil {
+           t.Fatalf("protocol validation failed: %v", err)
+       }
+   }
+   ```
 
 ## 测试
 

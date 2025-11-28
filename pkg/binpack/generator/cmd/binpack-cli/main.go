@@ -20,6 +20,8 @@ func main() {
 		runDocs(os.Args[2:])
 	case "debug":
 		runDebug(os.Args[2:])
+	case "validate":
+		runValidate(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Printf("binpack version %s\n", version)
 	case "help", "-h", "--help":
@@ -41,6 +43,7 @@ func printUsage() {
 	fmt.Println("  gen      Generate static encoder/decoder code")
 	fmt.Println("  docs     Generate protocol documentation")
 	fmt.Println("  debug    Debug binary data with protocol definition")
+	fmt.Println("  validate Validate struct tags in Go source files")
 	fmt.Println("  version  Show version information")
 	fmt.Println("  help     Show this help message")
 	fmt.Println()

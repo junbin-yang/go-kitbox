@@ -7,6 +7,9 @@ import (
 
 // Marshal 将结构体编码为字节流
 func Marshal(v interface{}) ([]byte, error) {
+	if err := ValidateStruct(v); err != nil {
+		return nil, err
+	}
 	typ := reflect.TypeOf(v)
 	codec, err := CompileCodec(typ)
 	if err != nil {
@@ -17,6 +20,9 @@ func Marshal(v interface{}) ([]byte, error) {
 
 // Unmarshal 将字节流解码为结构体
 func Unmarshal(data []byte, v interface{}) error {
+	if err := ValidateStruct(v); err != nil {
+		return err
+	}
 	typ := reflect.TypeOf(v)
 	if typ.Kind() != reflect.Ptr {
 		return fmt.Errorf("v must be a pointer")
@@ -31,6 +37,9 @@ func Unmarshal(data []byte, v interface{}) error {
 
 // MarshalTo 将结构体编码到指定 buffer
 func MarshalTo(buf []byte, v interface{}) (int, error) {
+	if err := ValidateStruct(v); err != nil {
+		return 0, err
+	}
 	typ := reflect.TypeOf(v)
 	codec, err := CompileCodec(typ)
 	if err != nil {
