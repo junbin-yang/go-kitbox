@@ -1,6 +1,6 @@
-# Binpack - 二进制协议编解码库
+# Binpack - 二进制协议编解码器
 
-高性能的二进制协议编解码库，通过结构体标签定义协议格式，支持代码生成和零反射开销。
+高性能的二进制协议编解码器，通过结构体标签定义协议格式，支持代码生成和零反射开销。
 
 ## 特性
 
@@ -635,8 +635,8 @@ if len(data) < expectedSize {
 
 **错误类型:**
 
-- `DecodeError`: 解码错误,包含字段名、类型、偏移、期望/实际长度等详细信息
-- `EncodeError`: 编码错误,包含字段名、类型和错误描述
+-   `DecodeError`: 解码错误,包含字段名、类型、偏移、期望/实际长度等详细信息
+-   `EncodeError`: 编码错误,包含字段名、类型和错误描述
 
 ## CLI 工具
 
@@ -657,12 +657,12 @@ go build -o binpack-cli
 
 ### 子命令概览
 
-| 命令       | 功能                           | 用途                     |
-| ---------- | ------------------------------ | ------------------------ |
-| `gen`      | 生成静态编解码代码             | 消除反射开销，提升性能   |
-| `docs`     | 生成协议文档                   | 协议规范文档化           |
-| `debug`    | 可视化调试二进制数据           | 排查编解码问题           |
-| `validate` | 验证结构体标签合法性           | 提前发现标签定义错误     |
+| 命令       | 功能                 | 用途                   |
+| ---------- | -------------------- | ---------------------- |
+| `gen`      | 生成静态编解码代码   | 消除反射开销，提升性能 |
+| `docs`     | 生成协议文档         | 协议规范文档化         |
+| `debug`    | 可视化调试二进制数据 | 排查编解码问题         |
+| `validate` | 验证结构体标签合法性 | 提前发现标签定义错误   |
 
 ### 子命令详解
 
@@ -675,6 +675,7 @@ binpack-cli gen -pkg <package> -type <struct> [-output <file>]
 ```
 
 **参数：**
+
 -   `-pkg`: 包路径（如 `./mypackage`）
 -   `-type`: 结构体类型名
 -   `-output`: 输出文件路径（可选，默认输出到标准输出）
@@ -719,6 +720,7 @@ binpack-cli docs -pkg <package> -type <struct> [-output <file>]
 ```
 
 **参数：**
+
 -   `-pkg`: 包路径
 -   `-type`: 结构体类型名
 -   `-output`: 输出文件路径（可选，默认输出到标准输出）
@@ -764,6 +766,7 @@ binpack-cli debug -pkg <package> -type <struct> (-data <file> | -hex <string>)
 ```
 
 **参数：**
+
 -   `-pkg`: 包路径
 -   `-type`: 结构体类型名
 -   `-data`: 二进制数据文件路径
@@ -833,12 +836,13 @@ Byte Mapping:
 ```
 
 **错误标记说明：**
-- `⚠️` - 头部警告标记，表示检测到错误
-- `!XX!` - 十六进制视图中标记错误字段的起始位置
-- `XX` - 缺失的字节位置
-- `?` - ASCII 视图中缺失数据的位置
-- `❌` - 字段解析中的错误标记
-- `!!! ERROR !!!` - 明确的错误提示文本
+
+-   `⚠️` - 头部警告标记，表示检测到错误
+-   `!XX!` - 十六进制视图中标记错误字段的起始位置
+-   `XX` - 缺失的字节位置
+-   `?` - ASCII 视图中缺失数据的位置
+-   `❌` - 字段解析中的错误标记
+-   `!!! ERROR !!!` - 明确的错误提示文本
 
 #### 4. validate - 结构体标签验证
 
@@ -849,6 +853,7 @@ binpack-cli validate -pkg <package> [-type <struct>]
 ```
 
 **参数：**
+
 -   `-pkg`: 包路径
 -   `-type`: 结构体类型名（可选，不指定则验证包内所有结构体）
 
@@ -959,24 +964,26 @@ if err := binpack.ValidateStruct(Packet{}); err != nil {
 **最佳实践：**
 
 1. **开发阶段**：使用 CLI 工具验证所有协议定义
-   ```bash
-   binpack-cli validate -pkg ./protocol
-   ```
+
+    ```bash
+    binpack-cli validate -pkg ./protocol
+    ```
 
 2. **CI/CD 集成**：在持续集成中添加验证步骤
-   ```bash
-   # 在 CI 脚本中
-   binpack-cli validate -pkg ./protocol || exit 1
-   ```
+
+    ```bash
+    # 在 CI 脚本中
+    binpack-cli validate -pkg ./protocol || exit 1
+    ```
 
 3. **单元测试**：为关键协议添加验证测试
-   ```go
-   func TestProtocolValidation(t *testing.T) {
-       if err := binpack.ValidateStruct(MyPacket{}); err != nil {
-           t.Fatalf("protocol validation failed: %v", err)
-       }
-   }
-   ```
+    ```go
+    func TestProtocolValidation(t *testing.T) {
+        if err := binpack.ValidateStruct(MyPacket{}); err != nil {
+            t.Fatalf("protocol validation failed: %v", err)
+        }
+    }
+    ```
 
 ## 测试
 
@@ -1001,6 +1008,7 @@ go test -cover ./pkg/binpack
 测试数据位于 [internal/binpack/testdata](../../internal/binpack/testdata/)，包含多种协议结构：
 
 **简单协议包（Packet）：**
+
 ```go
 type Packet struct {
     Magic  uint32 `bin:"0:4:be"`
@@ -1010,6 +1018,7 @@ type Packet struct {
 ```
 
 **复杂协议包（ComplexPacket）：**
+
 ```go
 type ComplexPacket struct {
     Magic      uint32   `bin:"0:4:be"`
@@ -1027,6 +1036,7 @@ type ComplexPacket struct {
 ### CLI 工具测试示例
 
 **测试代码生成：**
+
 ```bash
 cd pkg/binpack/generator/cmd/binpack-cli
 go build -o binpack-cli
@@ -1039,6 +1049,7 @@ go build -o binpack-cli
 ```
 
 **测试文档生成：**
+
 ```bash
 # 生成简单协议文档
 ./binpack-cli docs -pkg ../../../../../internal/binpack/testdata -type Packet
@@ -1048,6 +1059,7 @@ go build -o binpack-cli
 ```
 
 **测试调试功能（正常数据）：**
+
 ```bash
 # 简单协议 - 正常数据
 ./binpack-cli debug -pkg ../../../../../internal/binpack/testdata -type Packet -hex "1234567801050000"
@@ -1057,6 +1069,7 @@ go build -o binpack-cli
 ```
 
 **测试调试功能（错误数据）：**
+
 ```bash
 # 数据不足 - 缺少 Length 字段
 ./binpack-cli debug -pkg ../../../../../internal/binpack/testdata -type Packet -hex "1234567801"
