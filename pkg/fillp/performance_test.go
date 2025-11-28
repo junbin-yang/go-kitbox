@@ -20,7 +20,7 @@ func BenchmarkRequestResponse(b *testing.B) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	// 创建客户端
@@ -43,7 +43,7 @@ func BenchmarkRequestResponse(b *testing.B) {
 			if err != nil {
 				return
 			}
-			server.Send(data) // 立即回显
+			_ = server.Send(data) // 立即回显
 		}
 	}()
 
@@ -89,7 +89,7 @@ func BenchmarkBulkTransfer(b *testing.B) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)
@@ -158,7 +158,7 @@ func TestDelayedACKEfficiency(t *testing.T) {
 	}
 	defer server.Close()
 
-	go server.Listen()
+	go func() { _ = server.Listen() }()
 	time.Sleep(100 * time.Millisecond)
 
 	client, err := NewConnection(nil, serverAddr)
@@ -257,7 +257,7 @@ func TestRequestResponseLatency(t *testing.T) {
 			if err != nil {
 				return
 			}
-			server.Send(data) // 立即回显（触发捎带ACK）
+			_ = server.Send(data) // 立即回显（触发捎带ACK）
 		}
 	}()
 

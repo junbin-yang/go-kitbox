@@ -830,7 +830,7 @@ func (c *Connection) handleDataPacket(packet *Packet) {
 			c.ackTimer = time.AfterFunc(c.delayedAckDur, func() {
 				c.mu.Lock()
 				if c.pendingAck > 0 {
-					c.sendAckPacket(c.pendingAck, c.pendingAckTS)
+					_ = c.sendAckPacket(c.pendingAck, c.pendingAckTS)
 					c.pendingAck = 0
 				}
 				c.mu.Unlock()
@@ -843,7 +843,7 @@ func (c *Connection) handleDataPacket(packet *Packet) {
 		if c.ackTimer != nil {
 			c.ackTimer.Stop()
 		}
-		c.sendAckPacket(c.receiveSeq, packet.Timestamp)
+		_ = c.sendAckPacket(c.receiveSeq, packet.Timestamp)
 		c.pendingAck = 0
 	}
 
@@ -937,7 +937,7 @@ func (c *Connection) handleSynPacket(packet *Packet) {
 	// 初始化服务端序列号（随机值，这里简化为2000）
 	c.sendSeq = 2000
 	// 回复SYN-ACK：确认号=客户端SYN序列号+1
-	c.sendAckPacket(packet.Sequence+1, packet.Timestamp)
+	_ = c.sendAckPacket(packet.Sequence+1, packet.Timestamp)
 	// 更新接收确认号（客户端下一个应发送的序列号）
 	c.receiveAck = packet.Sequence + 1
 	// 初始化接收序列号（期望客户端下一个数据序列）
@@ -952,7 +952,7 @@ func (c *Connection) handleSynPacket(packet *Packet) {
 // handleFinPacket 处理结束报文
 func (c *Connection) handleFinPacket(packet *Packet) {
 	// 发送FIN-ACK响应
-	c.sendAckPacket(packet.Sequence, packet.Timestamp)
+	_ = c.sendAckPacket(packet.Sequence, packet.Timestamp)
 
 	// 关闭连接
 	c.Close()
@@ -961,7 +961,7 @@ func (c *Connection) handleFinPacket(packet *Packet) {
 // 处理保活报文（回复ACK即可）
 func (c *Connection) handleKeepAlivePacket(packet *Packet) {
 	// KeepAlive 不携带数据也不消耗序号，确认应基于当前累计接收进度
-	c.sendAckPacket(c.receiveSeq, packet.Timestamp)
+	_ = c.sendAckPacket(c.receiveSeq, packet.Timestamp)
 }
 
 // handleWindowUpdate 处理窗口更新报文

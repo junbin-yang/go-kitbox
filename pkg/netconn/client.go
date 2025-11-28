@@ -86,7 +86,7 @@ func (c *BaseClient) connectTCP(opt *ClientOption) (NetConnection, error) {
 
 	if opt.KeepAlive {
 		if tcpConn, ok := conn.(*net.TCPConn); ok {
-			tcpConn.SetKeepAlive(true)
+			_ = tcpConn.SetKeepAlive(true)
 			if opt.KeepAlivePeriod > 0 {
 				tcpConn.SetKeepAlivePeriod(opt.KeepAlivePeriod)
 			}

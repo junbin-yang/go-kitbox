@@ -235,7 +235,7 @@ func TestScenario6_GetStatistics(t *testing.T) {
 
 	// 发送数据
 	testData := []byte("Statistics test")
-	client.Send(testData)
+	_ = client.Send(testData)
 	time.Sleep(500 * time.Millisecond)
 
 	// 获取统计信息
