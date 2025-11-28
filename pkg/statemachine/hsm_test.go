@@ -10,8 +10,8 @@ func TestHSM_BasicHierarchy(t *testing.T) {
 	hsm.AddState("working", "root")
 	hsm.AddState("coding", "working")
 
-	hsm.AddTransition("root", "working", "start_work")
-	hsm.AddTransition("working", "coding", "start_coding")
+	_ = hsm.AddTransition("root", "working", "start_work")
+	_ = hsm.AddTransition("working", "coding", "start_coding")
 
 	ctx := context.Background()
 
@@ -40,12 +40,12 @@ func TestHSM_EventInheritance(t *testing.T) {
 	hsm.AddState("coding", "working")
 
 	// 在父状态定义转换
-	hsm.AddTransition("working", "root", "stop")
+	_ = hsm.AddTransition("working", "root", "stop")
 
 	// 切换到子状态
-	hsm.AddTransition("root", "coding", "start")
+	_ = hsm.AddTransition("root", "coding", "start")
 	ctx := context.Background()
-	hsm.Trigger(ctx, "start")
+	_ = hsm.Trigger(ctx, "start")
 
 	// 子状态应该能继承父状态的转换
 	if !hsm.Can("stop") {

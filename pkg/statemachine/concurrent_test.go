@@ -49,10 +49,10 @@ func TestConcurrent_TriggerAll(t *testing.T) {
 	concurrent := NewConcurrent()
 
 	fsm1 := NewFSM("idle")
-	fsm1.AddTransition("idle", "running", "start")
+	_ = fsm1.AddTransition("idle", "running", "start")
 
 	fsm2 := NewFSM("idle")
-	fsm2.AddTransition("idle", "running", "start")
+	_ = fsm2.AddTransition("idle", "running", "start")
 
 	concurrent.AddMachine("machine1", fsm1)
 	concurrent.AddMachine("machine2", fsm2)

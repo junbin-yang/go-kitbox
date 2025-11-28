@@ -35,7 +35,7 @@ func TestFSM_BasicTransition(t *testing.T) {
 
 func TestFSM_InvalidTransition(t *testing.T) {
 	fsm := NewFSM("idle")
-	fsm.AddTransition("idle", "running", "start")
+	_ = fsm.AddTransition("idle", "running", "start")
 
 	ctx := context.Background()
 	err := fsm.Trigger(ctx, "invalid")
@@ -65,7 +65,7 @@ func TestFSM_Guard(t *testing.T) {
 
 func TestFSM_Callbacks(t *testing.T) {
 	fsm := NewFSM("idle")
-	fsm.AddTransition("idle", "running", "start")
+	_ = fsm.AddTransition("idle", "running", "start")
 
 	entered := false
 	exited := false
@@ -81,7 +81,7 @@ func TestFSM_Callbacks(t *testing.T) {
 	})
 
 	ctx := context.Background()
-	fsm.Trigger(ctx, "start")
+	_ = fsm.Trigger(ctx, "start")
 
 	if !entered {
 		t.Error("OnEnter 回调未执行")
@@ -93,16 +93,16 @@ func TestFSM_Callbacks(t *testing.T) {
 
 func TestFSM_Reset(t *testing.T) {
 	fsm := NewFSM("idle")
-	fsm.AddTransition("idle", "running", "start")
+	_ = fsm.AddTransition("idle", "running", "start")
 
 	ctx := context.Background()
-	fsm.Trigger(ctx, "start")
+	_ = fsm.Trigger(ctx, "start")
 
 	if fsm.Current() != "running" {
 		t.Errorf("状态错误: got %v, want running", fsm.Current())
 	}
 
-	fsm.Reset()
+	_ = fsm.Reset()
 
 	if fsm.Current() != "idle" {
 		t.Errorf("重置后状态错误: got %v, want idle", fsm.Current())
@@ -111,7 +111,7 @@ func TestFSM_Reset(t *testing.T) {
 
 func TestFSM_Can(t *testing.T) {
 	fsm := NewFSM("idle")
-	fsm.AddTransition("idle", "running", "start")
+	_ = fsm.AddTransition("idle", "running", "start")
 
 	if !fsm.Can("start") {
 		t.Error("应该可以触发 start 事件")
