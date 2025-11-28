@@ -1,10 +1,24 @@
 run:
-  # 排除的目录
-  skip-dirs:
-    - examples
-
   # 超时时间
   timeout: 5m
+
+  # 排除的目录（使用正则表达式）
+  skip-dirs:
+    - examples
+    - testdata
+
+issues:
+  # 排除 examples 目录的所有问题
+  exclude-rules:
+    - path: examples
+      linters:
+        - typecheck
+        - errcheck
+        - gosimple
+        - govet
+        - ineffassign
+        - staticcheck
+        - unused
 
 linters:
   enable:
