@@ -209,6 +209,52 @@ func TestTaskPool_AutoScale(t *testing.T) {
 	}
 }
 
+func TestTaskPool_AutoScaleDown(t *testing.T) {
+	pool := New(
+		WithQueueSize(100),
+		WithMinWorkers(2),
+		WithMaxWorkers(10),
+		WithAutoScale(true),
+		WithScaleInterval(100*time.Millisecond),
+	)
+	defer func() { _ = pool.ShutdownNow() }()
+
+	scaledUp := false
+	scaledDown := false
+	pool.onWorkerScale = func(oldCount, newCount int) {
+		t.Logf("Worker count changed: %d -> %d (queue: %d, running: %d)",
+			oldCount, newCount, pool.queue.Len(), pool.runningTasks.Load())
+		if newCount > oldCount {
+			scaledUp = true
+		}
+		if newCount < oldCount {
+			scaledDown = true
+		}
+	}
+
+	// Phase 1: Submit many tasks to trigger scale-up
+	for i := 0; i < 90; i++ {
+		pool.Submit(func(ctx context.Context) error {
+			time.Sleep(50 * time.Millisecond)
+			return nil
+		})
+	}
+
+	// Wait for scale-up to happen
+	time.Sleep(200 * time.Millisecond)
+
+	if !scaledUp {
+		t.Log("Warning: Scale-up was not triggered, but continuing test")
+	}
+
+	// Phase 2: Wait for all tasks to complete and workers to become idle
+	time.Sleep(1500 * time.Millisecond)
+
+	if !scaledDown {
+		t.Errorf("Auto-scale down was not triggered (workers: %d)", pool.GetWorkerCount())
+	}
+}
+
 func TestTaskPool_Shutdown(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(2))
 

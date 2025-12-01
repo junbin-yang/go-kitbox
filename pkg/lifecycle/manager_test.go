@@ -238,3 +238,68 @@ func TestManager_IndependentContext(t *testing.T) {
 		t.Error("worker2 未被停止")
 	}
 }
+
+// TestManager_WithSignals 测试信号处理选项
+func TestManager_WithSignals(t *testing.T) {
+	m := NewManager(WithSignals())
+
+	_ = m.AddWorker("test", func(ctx context.Context) error {
+		<-ctx.Done()
+		return nil
+	})
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		_ = m.Shutdown()
+	}()
+
+	_ = m.Run()
+}
+
+// TestManager_WithContext 测试自定义上下文选项
+func TestManager_WithContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m := NewManager(WithContext(ctx))
+
+	_ = m.AddWorker("test", func(ctx context.Context) error {
+		<-ctx.Done()
+		return nil
+	})
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	_ = m.Run()
+}
+
+// TestManager_TimeoutHook 测试超时钩子
+func TestManager_TimeoutHook(t *testing.T) {
+	timeoutCalled := false
+
+	m := NewManager(
+		WithShutdownTimeout(100 * time.Millisecond),
+	)
+
+	m.OnTimeout(func(ctx context.Context) error {
+		timeoutCalled = true
+		return nil
+	})
+
+	_ = m.AddWorker("slow", func(ctx context.Context) error {
+		time.Sleep(500 * time.Millisecond) // 超过超时时间
+		return nil
+	})
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = m.Shutdown()
+	}()
+
+	_ = m.Run()
+
+	if !timeoutCalled {
+		t.Error("超时钩子未被调用")
+	}
+}

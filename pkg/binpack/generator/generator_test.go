@@ -176,3 +176,58 @@ type TestPacket struct {
 
 	t.Logf("Generated code test output:\n%s", output)
 }
+
+func TestParseTagForGen(t *testing.T) {
+	tests := []struct {
+		name    string
+		tag     string
+		wantErr bool
+	}{
+		{"valid basic tag", "0:4:be", false},
+		{"valid with little endian", "4:2:le", false},
+		{"valid variable length", "0:var,len:Length", false},
+		{"skip tag", "-", false},
+		{"invalid empty", "", true},
+		{"invalid format", "invalid", true},
+		{"invalid endian", "0:4:xx", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := ParseTagForGen(tt.tag)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseTagForGen() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && info == nil {
+				t.Error("ParseTagForGen() returned nil info without error")
+			}
+		})
+	}
+}
+
+func TestGenerateFromFields(t *testing.T) {
+	fields := []FieldInfo{
+		{Name: "Magic", Type: "uint32", Offset: 0, Size: 4, ByteOrder: "binary.BigEndian"},
+		{Name: "Type", Type: "uint8", Offset: 4, Size: 1},
+		{Name: "Length", Type: "uint16", Offset: 5, Size: 2, ByteOrder: "binary.LittleEndian"},
+	}
+
+	code, err := GenerateFromFields("TestPacket", "testpkg", fields, 7)
+	if err != nil {
+		t.Fatalf("GenerateFromFields failed: %v", err)
+	}
+
+	codeStr := string(code)
+	checks := []string{
+		"package testpkg",
+		"func MarshalTestPacket",
+		"func UnmarshalTestPacket",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(codeStr, check) {
+			t.Errorf("Generated code missing: %s", check)
+		}
+	}
+}
