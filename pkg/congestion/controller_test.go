@@ -199,3 +199,118 @@ func TestBBRBandwidthEstimation(t *testing.T) {
 		t.Errorf("Expected positive send rate, got %d", rate)
 	}
 }
+
+func TestRenoController(t *testing.T) {
+	ctrl := NewRenoController(2800, 65536, 1400)
+
+	// Test initial state
+	if ctrl.GetCongestionWindow() != 2800 {
+		t.Errorf("Initial cwnd = %d, want 2800", ctrl.GetCongestionWindow())
+	}
+
+	// Test packet sent
+	ctrl.OnPacketSent(1400)
+
+	// Test ACK received (slow start)
+	ctrl.OnAckReceived(1400, 50*time.Millisecond)
+	if ctrl.GetCongestionWindow() <= 2800 {
+		t.Error("Expected cwnd to grow in slow start")
+	}
+
+	// Test packet loss
+	cwndBeforeLoss := ctrl.GetCongestionWindow()
+	ctrl.OnPacketLost()
+	cwndAfterLoss := ctrl.GetCongestionWindow()
+	// Just verify the function doesn't panic
+	_ = cwndBeforeLoss
+	_ = cwndAfterLoss
+
+	// Test send rate
+	rate := ctrl.GetSendRate()
+	if rate <= 0 {
+		t.Errorf("Expected positive send rate, got %d", rate)
+	}
+
+	// Test statistics
+	stats := ctrl.GetStatistics()
+	if stats.PacketsSent == 0 {
+		t.Error("Expected packets sent to be tracked")
+	}
+}
+
+func TestRenoSlowStart(t *testing.T) {
+	ctrl := NewRenoController(1400, 65536, 1400)
+	initialCwnd := ctrl.GetCongestionWindow()
+
+	// Simulate slow start
+	for i := 0; i < 5; i++ {
+		ctrl.OnPacketSent(1400)
+		ctrl.OnAckReceived(1400, 50*time.Millisecond)
+	}
+
+	if ctrl.GetCongestionWindow() <= initialCwnd {
+		t.Error("Expected cwnd to grow during slow start")
+	}
+}
+
+func TestRenoCongestionAvoidance(t *testing.T) {
+	ctrl := NewRenoController(65536, 65536, 1400)
+
+	// Trigger congestion avoidance by setting high cwnd
+	for i := 0; i < 10; i++ {
+		ctrl.OnPacketSent(1400)
+		ctrl.OnAckReceived(1400, 50*time.Millisecond)
+	}
+
+	cwnd := ctrl.GetCongestionWindow()
+	if cwnd == 0 {
+		t.Error("Expected non-zero cwnd in congestion avoidance")
+	}
+}
+
+func TestVegasGetSendRate(t *testing.T) {
+	ctrl := NewVegasController(2800, 65536, 1400)
+
+	ctrl.OnPacketSent(1400)
+	ctrl.OnAckReceived(1400, 50*time.Millisecond)
+
+	rate := ctrl.GetSendRate()
+	if rate <= 0 {
+		t.Errorf("Expected positive send rate, got %d", rate)
+	}
+}
+
+func TestVegasGetStatistics(t *testing.T) {
+	ctrl := NewVegasController(2800, 65536, 1400)
+
+	ctrl.OnPacketSent(1400)
+	ctrl.OnAckReceived(1400, 50*time.Millisecond)
+
+	stats := ctrl.GetStatistics()
+	if stats.PacketsSent == 0 {
+		t.Error("Expected packets sent to be tracked")
+	}
+}
+
+func TestVegasOnPacketLost(t *testing.T) {
+	ctrl := NewVegasController(2800, 65536, 1400)
+	initialCwnd := ctrl.GetCongestionWindow()
+
+	ctrl.OnPacketLost()
+
+	// Just verify the function doesn't panic
+	_ = initialCwnd
+	_ = ctrl.GetCongestionWindow()
+}
+
+func TestCubicGetSendRate(t *testing.T) {
+	ctrl := NewCubicController(2800, 65536, 1400)
+
+	ctrl.OnPacketSent(1400)
+	ctrl.OnAckReceived(1400, 50*time.Millisecond)
+
+	rate := ctrl.GetSendRate()
+	if rate <= 0 {
+		t.Errorf("Expected positive send rate, got %d", rate)
+	}
+}

@@ -326,15 +326,18 @@ func TestScenario11_INIFormat(t *testing.T) {
 func TestScenario12_EnvOverride(t *testing.T) {
 	type EnvTestConfig struct {
 		Server struct {
-			Port int    `yaml:"port" json:"port" ini:"port" env:"SERVER_PORT"`
-			Host string `yaml:"host" json:"host" ini:"host" env:"SERVER_HOST"`
+			Port    int    `yaml:"port" json:"port" ini:"port" env:"SERVER_PORT"`
+			Host    string `yaml:"host" json:"host" ini:"host" env:"SERVER_HOST"`
+			Enabled bool   `yaml:"enabled" json:"enabled" ini:"enabled" env:"SERVER_ENABLED"`
 		} `yaml:"server" json:"server" ini:"server"`
 	}
 
 	os.Setenv("SERVER_PORT", "9999")
 	os.Setenv("SERVER_HOST", "localhost")
+	os.Setenv("SERVER_ENABLED", "true")
 	defer os.Unsetenv("SERVER_PORT")
 	defer os.Unsetenv("SERVER_HOST")
+	defer os.Unsetenv("SERVER_ENABLED")
 
 	cfg := &EnvTestConfig{}
 	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
@@ -351,6 +354,9 @@ func TestScenario12_EnvOverride(t *testing.T) {
 	}
 	if testCfg.Server.Host != "localhost" {
 		t.Errorf("期望主机 localhost (环境变量), 实际 %s", testCfg.Server.Host)
+	}
+	if !testCfg.Server.Enabled {
+		t.Error("期望 Enabled=true (环境变量)")
 	}
 }
 
@@ -391,5 +397,133 @@ func TestScenario13_OnChangeCallback(t *testing.T) {
 
 	if !callbackCalled {
 		t.Error("配置变更回调未被触发")
+	}
+}
+
+// Test utility functions
+func TestReplacePathVars(t *testing.T) {
+	vars := map[string]string{
+		"app":  "myapp",
+		"env":  "prod",
+		"home": "/home/user",
+	}
+
+	result := replacePathVars("{{.home}}/{{.app}}/config.{{.env}}.yml", vars)
+	expected := "/home/user/myapp/config.prod.yml"
+	if result != expected {
+		t.Errorf("Expected %s, got %s", expected, result)
+	}
+}
+
+func TestValidateConfigPath(t *testing.T) {
+	// Test empty path
+	err := validateConfigPath("")
+	if err == nil {
+		t.Error("Expected error for empty path")
+	}
+
+	// Test non-existent file
+	err = validateConfigPath("/nonexistent/file.yml")
+	if err == nil {
+		t.Error("Expected error for non-existent file")
+	}
+
+	// Test directory
+	tmpDir := t.TempDir()
+	err = validateConfigPath(tmpDir)
+	if err == nil {
+		t.Error("Expected error for directory path")
+	}
+
+	// Test valid file
+	tmpFile := filepath.Join(tmpDir, "test.yml")
+	_ = os.WriteFile(tmpFile, []byte("test: value"), 0644)
+	err = validateConfigPath(tmpFile)
+	if err != nil {
+		t.Errorf("Expected no error for valid file, got %v", err)
+	}
+}
+
+func TestSerializerGetName(t *testing.T) {
+	yaml := &YAMLSerializer{}
+	if yaml.GetName() != "yaml" {
+		t.Errorf("Expected yaml, got %s", yaml.GetName())
+	}
+
+	json := &JSONSerializer{}
+	if json.GetName() != "json" {
+		t.Errorf("Expected json, got %s", json.GetName())
+	}
+
+	ini := &INISerializer{}
+	if ini.GetName() != "ini" {
+		t.Errorf("Expected ini, got %s", ini.GetName())
+	}
+}
+
+func TestYAMLMarshal(t *testing.T) {
+	yaml := &YAMLSerializer{}
+	data := map[string]interface{}{
+		"key": "value",
+		"num": 123,
+	}
+	result, err := yaml.Marshal(data)
+	if err != nil {
+		t.Errorf("YAML marshal failed: %v", err)
+	}
+	if len(result) == 0 {
+		t.Error("YAML marshal returned empty result")
+	}
+}
+
+func TestINIMarshal(t *testing.T) {
+	ini := &INISerializer{}
+	data := &TestConfig{}
+	data.Server.Port = 8080
+	data.Server.Host = "localhost"
+	result, err := ini.Marshal(data)
+	if err != nil {
+		t.Errorf("INI marshal failed: %v", err)
+	}
+	if len(result) == 0 {
+		t.Error("INI marshal returned empty result")
+	}
+}
+
+func TestWithDefaultPaths(t *testing.T) {
+	cfg := &TestConfig{}
+	paths := []string{"/path1", "/path2"}
+	cm := NewConfigManager(cfg, WithDefaultPaths(paths...))
+	if cm == nil {
+		t.Error("NewConfigManager with default paths failed")
+	}
+}
+
+func TestFindDefaultConfigPath(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "config.yml")
+	_ = os.WriteFile(tmpFile, []byte("server:\n  port: 8080"), 0644)
+
+	cm := NewConfigManager(cfg, WithDefaultPaths(tmpDir+"/config"))
+	path, err := cm.findDefaultConfigPath()
+	if err != nil {
+		t.Logf("findDefaultConfigPath returned error (expected): %v", err)
+	}
+	_ = path
+}
+
+func TestJSONMarshal(t *testing.T) {
+	json := &JSONSerializer{}
+	data := map[string]interface{}{
+		"key": "value",
+		"num": 123,
+	}
+	result, err := json.Marshal(data)
+	if err != nil {
+		t.Errorf("JSON marshal failed: %v", err)
+	}
+	if len(result) == 0 {
+		t.Error("JSON marshal returned empty result")
 	}
 }

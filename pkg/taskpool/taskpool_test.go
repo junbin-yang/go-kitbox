@@ -263,3 +263,114 @@ func TestTaskPool_Metrics(t *testing.T) {
 		t.Errorf("TotalFailed = %d, want 1", metrics.TotalFailed)
 	}
 }
+
+func TestTaskPool_Options(t *testing.T) {
+	pool := New(
+		WithScaleStrategy(NewDefaultScaleStrategy(10)),
+		WithStarvationPrevention(5),
+		WithDefaultTimeout(5*time.Second),
+		WithPanicHandler(func(taskID string, r interface{}) {}),
+		WithOnWorkerScale(func(old, new int) {}),
+		WithOnTaskStart(func(taskID string) {}),
+		WithOnTaskComplete(func(taskID string, duration time.Duration, err error) {}),
+		WithOnTaskTimeout(func(taskID string) {}),
+		WithOnTaskPanic(func(taskID string, v interface{}) {}),
+		WithOnShutdown(func(metrics *MetricsSnapshot) {}),
+	)
+	defer pool.ShutdownNow()
+
+	if pool == nil {
+		t.Fatal("Pool should not be nil")
+	}
+}
+
+func TestTaskPool_SubmitAsync(t *testing.T) {
+	pool := New(WithMinWorkers(2))
+	defer pool.ShutdownNow()
+
+	executed := atomic.Bool{}
+	pool.SubmitAsync(func(ctx context.Context) error {
+		executed.Store(true)
+		return nil
+	})
+
+	time.Sleep(100 * time.Millisecond)
+	if !executed.Load() {
+		t.Error("Async task was not executed")
+	}
+}
+
+func TestTaskPool_GetQueueLength(t *testing.T) {
+	pool := New(WithQueueSize(10), WithMinWorkers(1))
+	defer pool.ShutdownNow()
+
+	qLen := pool.GetQueueLength()
+	if qLen < 0 {
+		t.Errorf("Queue length should be non-negative, got %d", qLen)
+	}
+}
+
+func TestTask_IsDone(t *testing.T) {
+	pool := New(WithMinWorkers(1))
+	defer pool.ShutdownNow()
+
+	future := pool.Submit(func(ctx context.Context) error {
+		time.Sleep(50 * time.Millisecond)
+		return nil
+	})
+
+	if future.IsDone() {
+		t.Error("Task should not be done immediately")
+	}
+
+	<-future.Wait()
+	if !future.IsDone() {
+		t.Error("Task should be done after waiting")
+	}
+}
+
+func TestTask_GetResult(t *testing.T) {
+	pool := New(WithMinWorkers(1))
+	defer pool.ShutdownNow()
+
+	future := pool.Submit(func(ctx context.Context) error {
+		return errors.New("test error")
+	})
+
+	<-future.Wait()
+	result, _ := future.GetResult(100 * time.Millisecond)
+	if result.Err == nil {
+		t.Error("Expected error in result")
+	}
+}
+
+func TestTask_WithTaskID(t *testing.T) {
+	pool := New(WithMinWorkers(1))
+	defer pool.ShutdownNow()
+
+	future := pool.Submit(func(ctx context.Context) error {
+		return nil
+	}, WithTaskID("test-task-123"))
+
+	result := <-future.Wait()
+	if result.TaskID != "test-task-123" {
+		t.Errorf("TaskID = %s, want test-task-123", result.TaskID)
+	}
+}
+
+func TestQueue_Cap(t *testing.T) {
+	queue := NewRingQueue(10)
+	defer queue.Close()
+
+	if queue.Cap() != 10 {
+		t.Errorf("Cap = %d, want 10", queue.Cap())
+	}
+}
+
+func TestScaleStrategy_ScaleDownCount(t *testing.T) {
+	strategy := NewDefaultScaleStrategy(10)
+	count := strategy.ScaleDownCount(10, 2)
+	if count < 0 {
+		t.Errorf("ScaleDownCount should be non-negative, got %d", count)
+	}
+}

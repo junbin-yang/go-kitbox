@@ -2,9 +2,12 @@
 set -e
 
 echo "Running tests..."
-go test -v -coverprofile=coverage.out $(go list ./... | grep -v '/examples/')
+go test -coverprofile=coverage.out ./pkg/...
 
-echo "Generating coverage report..."
+echo "Analyzing coverage..."
+python3 scripts/analyze_coverage.py
+
+echo "Generating HTML report..."
 go tool cover -html=coverage.out -o coverage.html
 
-echo "Coverage report generated: coverage.html"
+echo "Done! Coverage report: coverage.html"

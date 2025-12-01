@@ -357,6 +357,75 @@ func BenchmarkMarshalWithCodec(b *testing.B) {
 	}
 }
 
+// TestMarshalWithPool 测试使用 buffer 池编码（零拷贝）
+func TestMarshalWithPool(t *testing.T) {
+	type Packet struct {
+		Magic  uint32 `bin:"0:4:be"`
+		Type   uint8  `bin:"4:1"`
+		Length uint16 `bin:"5:2:le"`
+	}
+
+	pkt := Packet{
+		Magic:  0x12345678,
+		Type:   1,
+		Length: 7,
+	}
+
+	pool := NewBufferPool(128)
+	data, err := MarshalWithPool(pool, &pkt)
+	if err != nil {
+		t.Fatalf("MarshalWithPool failed: %v", err)
+	}
+	defer pool.Put(&data)
+
+	if len(data) != 7 {
+		t.Errorf("Expected 7 bytes, got %d", len(data))
+	}
+
+	var decoded Packet
+	if err := Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+
+	if decoded.Magic != pkt.Magic || decoded.Type != pkt.Type || decoded.Length != pkt.Length {
+		t.Error("Decoded data mismatch")
+	}
+}
+
+// TestMarshalWithPoolCopy 测试使用 buffer 池编码（带复制）
+func TestMarshalWithPoolCopy(t *testing.T) {
+	type Packet struct {
+		Magic  uint32 `bin:"0:4:be"`
+		Type   uint8  `bin:"4:1"`
+		Length uint16 `bin:"5:2:le"`
+	}
+
+	pkt := Packet{
+		Magic:  0x12345678,
+		Type:   1,
+		Length: 7,
+	}
+
+	pool := NewBufferPool(128)
+	data, err := MarshalWithPoolCopy(pool, &pkt)
+	if err != nil {
+		t.Fatalf("MarshalWithPoolCopy failed: %v", err)
+	}
+
+	if len(data) != 7 {
+		t.Errorf("Expected 7 bytes, got %d", len(data))
+	}
+
+	var decoded Packet
+	if err := Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+
+	if decoded.Magic != pkt.Magic || decoded.Type != pkt.Type || decoded.Length != pkt.Length {
+		t.Error("Decoded data mismatch")
+	}
+}
+
 // BenchmarkMarshalWithPool 性能测试：使用 buffer 池编码（零拷贝）
 func BenchmarkMarshalWithPool(b *testing.B) {
 	type Packet struct {

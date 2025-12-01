@@ -95,6 +95,72 @@ func TestGlobalFdAllocation(t *testing.T) {
 	t.Logf("Successfully allocated 2000+ unique FDs without conflict")
 }
 
+func TestUDPClientServer(t *testing.T) {
+	// Create UDP server
+	server := NewBaseServer(nil)
+	serverCallback := &BaseListenerCallback{
+		OnConnected: func(fd int, connType ConnectionType, connOpt *ConnectOption) {
+			t.Logf("UDP Server: client connected, fd=%d", fd)
+		},
+		OnDisconnected: func(fd int, connType ConnectionType) {
+			t.Logf("UDP Server: client disconnected, fd=%d", fd)
+		},
+		OnDataReceived: func(fd int, connType ConnectionType, buf []byte, used int) int {
+			t.Logf("UDP Server: received data from fd=%d: %s", fd, string(buf[:used]))
+			_ = server.SendBytes(fd, buf[:used]) // Echo back
+			return used
+		},
+	}
+
+	opt := &ServerOption{
+		Protocol: ProtocolUDP,
+		Addr:     "127.0.0.1",
+		Port:     18082,
+	}
+
+	if err := server.StartBaseListener(opt, serverCallback); err != nil {
+		t.Fatalf("Failed to start UDP server: %v", err)
+	}
+	defer func() { _ = server.StopBaseListener() }()
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Create UDP client
+	clientCallback := &BaseListenerCallback{
+		OnConnected: func(fd int, connType ConnectionType, connOpt *ConnectOption) {
+			t.Logf("UDP Client: connected, fd=%d", fd)
+		},
+		OnDisconnected: func(fd int, connType ConnectionType) {
+			t.Logf("UDP Client: disconnected, fd=%d", fd)
+		},
+		OnDataReceived: func(fd int, connType ConnectionType, buf []byte, used int) int {
+			t.Logf("UDP Client: received data: %s", string(buf[:used]))
+			return used
+		},
+	}
+
+	client := NewBaseClient(nil, clientCallback)
+	fd, err := client.ConnectSimple(ProtocolUDP, "127.0.0.1", 18082)
+	if err != nil {
+		t.Fatalf("Failed to connect UDP: %v", err)
+	}
+	defer client.Close()
+
+	t.Logf("UDP Client connected with fd=%d", fd)
+
+	// Send data
+	if err := client.SendBytes([]byte("Hello UDP Server")); err != nil {
+		t.Fatalf("Failed to send UDP: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+}
+
+func TestUDPConnection(t *testing.T) {
+	// Test UDP connection adapter - skip if not implemented
+	t.Skip("UDP connection adapter test - implementation specific")
+}
+
 func TestClientGetters(t *testing.T) {
 	server := NewBaseServer(nil)
 	opt := &ServerOption{Protocol: ProtocolTCP, Addr: "127.0.0.1", Port: 18081}

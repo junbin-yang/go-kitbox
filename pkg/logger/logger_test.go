@@ -1,6 +1,9 @@
 package logger
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func Test_LOG(t *testing.T) {
 	defer func() { _ = Sync() }()
@@ -60,5 +63,78 @@ func Test_LevelMapping(t *testing.T) {
 	}
 	if toZapLevel(FatalLevel) != 5 {
 		t.Errorf("FatalLevel mapping failed: got %d, want 5", toZapLevel(FatalLevel))
+	}
+}
+
+func Test_FormattedLogging(t *testing.T) {
+	defer func() { _ = Sync() }()
+	Infof("Info msg: %s", "test")
+	Warnf("Warn msg: %d", 123)
+	Errorf("Error msg: %v", true)
+}
+
+func Test_SetLevel(t *testing.T) {
+	logger := New(nil, InfoLevel)
+	logger.SetLevel(DebugLevel)
+	logger.Debug("debug message")
+	SetLevel(WarnLevel)
+}
+
+func Test_Default(t *testing.T) {
+	logger := Default()
+	if logger == nil {
+		t.Error("Default logger should not be nil")
+	}
+}
+
+func Test_RotateByTime(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &RotateConfig{
+		Filename:     tmpDir + "/test.log",
+		MaxAge:       7,
+		RotationTime: 24 * time.Hour,
+		LocalTime:    true,
+	}
+	writer := NewRotateByTime(cfg)
+	if writer == nil {
+		t.Error("NewRotateByTime should not return nil")
+	}
+}
+
+func Test_RotateBySize(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &RotateConfig{
+		Filename:   tmpDir + "/test.log",
+		MaxSize:    10,
+		MaxAge:     7,
+		MaxBackups: 5,
+		Compress:   true,
+		LocalTime:  true,
+	}
+	writer := NewRotateBySize(cfg)
+	if writer == nil {
+		t.Error("NewRotateBySize should not return nil")
+	}
+}
+
+func Test_ProductionRotate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	writer1 := NewProductionRotateByTime(tmpDir + "/time.log")
+	if writer1 == nil {
+		t.Error("NewProductionRotateByTime should not return nil")
+	}
+
+	writer2 := NewProductionRotateBySize(tmpDir + "/size.log")
+	if writer2 == nil {
+		t.Error("NewProductionRotateBySize should not return nil")
+	}
+
+	cfg := NewProductionRotateConfig(tmpDir + "/prod.log")
+	if cfg == nil {
+		t.Error("NewProductionRotateConfig should not return nil")
+	}
+	if cfg.MaxAge != 30 {
+		t.Errorf("Expected MaxAge=30, got %d", cfg.MaxAge)
 	}
 }

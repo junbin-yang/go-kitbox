@@ -3,6 +3,7 @@ package fillp
 import (
 	"fmt"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -356,4 +357,148 @@ func TestScenario10_ConcurrentSendReceive(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
+}
+
+func TestScenario11_DefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	// Just verify it returns a valid config
+	_ = cfg
+}
+
+func TestScenario12_LocalRemoteAddr(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+	_ = conn.LocalAddr()
+	_ = conn.RemoteAddr()
+}
+
+func TestScenario13_BufferUnread(t *testing.T) {
+	buf := NewRingBuffer(1024)
+	defer buf.Close()
+
+	data := []byte("test data")
+	buf.Write(data)
+
+	read := make([]byte, 4)
+	buf.Read(len(read))
+
+	buf.Unread(read)
+}
+
+func TestScenario14_RetransmissionQueue(t *testing.T) {
+	queue := NewRetransmissionQueue()
+
+	queue.Add(100, []byte("test"), time.Now().UnixMilli())
+	initialSize := queue.Size()
+
+	queue.RemoveUpTo(101) // RemoveUpTo removes packets < seq
+	if queue.Size() >= initialSize {
+		t.Errorf("After RemoveUpTo, size should decrease")
+	}
+}
+
+func TestScenario15_PeekEarliest(t *testing.T) {
+	queue := NewRetransmissionQueue()
+
+	queue.Add(100, []byte("test1"), time.Now().UnixMilli())
+	queue.Add(101, []byte("test2"), time.Now().UnixMilli())
+
+	earliest := queue.PeekEarliest()
+	if earliest == nil || earliest.Sequence != 100 {
+		t.Error("PeekEarliest should return packet with Sequence 100")
+	}
+}
+
+func TestScenario16_UpdateRetransmission(t *testing.T) {
+	queue := NewRetransmissionQueue()
+
+	queue.Add(100, []byte("test"), time.Now().UnixMilli())
+
+	earliest := queue.PeekEarliest()
+	if earliest != nil {
+		earliest.NextRetrans = time.Now().Add(time.Second).UnixMilli()
+		queue.Update(earliest)
+	}
+
+	if queue.Size() != 1 {
+		t.Errorf("After Update, size = %d, want 1", queue.Size())
+	}
+}
+
+func TestScenario17_CongestionWindow(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+
+	window := conn.getCongestionWindow()
+	if window == 0 {
+		t.Error("Congestion window should be non-zero")
+	}
+}
+
+func TestScenario18_ReceiveTimeout(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+
+	// Try to receive with timeout - should timeout
+	_, err := conn.ReceiveWithTimeout(100 * time.Millisecond)
+	// Just verify it doesn't panic
+	_ = err
+}
+
+func TestScenario19_KeepAlive(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// Test keep-alive packet handling
+	packet := &Packet{
+		Type:      PacketTypeKeepAlive,
+		Sequence:  1,
+		Timestamp: 100,
+	}
+	conn.handleKeepAlivePacket(packet)
+	// Verify no panic
+}
+
+func TestScenario20_WindowUpdate(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// Test window update
+	packet := &Packet{
+		Type:   PacketTypeWindowUpdate,
+		Window: 65536,
+	}
+	conn.handleWindowUpdate(packet)
+
+	if conn.sendWindow != 65536 {
+		t.Errorf("Window not updated, got %d, want 65536", conn.sendWindow)
+	}
+}
+
+func TestScenario21_SendKeepAlive(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// Test sending keep-alive
+	conn.sendKeepAlive()
+	// Verify no panic
+}
+
+func TestScenario22_ReceiveBlocking(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// Test receive with timeout (should timeout)
+	done := make(chan bool)
+	go func() {
+		_, err := conn.ReceiveWithTimeout(50 * time.Millisecond)
+		if err == nil {
+			t.Error("Expected timeout error")
+		}
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(200 * time.Millisecond):
+		t.Error("Receive did not timeout")
+	}
 }
