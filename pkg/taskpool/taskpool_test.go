@@ -312,7 +312,7 @@ func TestTaskPool_GetQueueLength(t *testing.T) {
 
 func TestTask_IsDone(t *testing.T) {
 	pool := New(WithMinWorkers(1))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	future := pool.Submit(func(ctx context.Context) error {
 		time.Sleep(50 * time.Millisecond)
@@ -331,7 +331,7 @@ func TestTask_IsDone(t *testing.T) {
 
 func TestTask_GetResult(t *testing.T) {
 	pool := New(WithMinWorkers(1))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	future := pool.Submit(func(ctx context.Context) error {
 		return errors.New("test error")
@@ -346,7 +346,7 @@ func TestTask_GetResult(t *testing.T) {
 
 func TestTask_WithTaskID(t *testing.T) {
 	pool := New(WithMinWorkers(1))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	future := pool.Submit(func(ctx context.Context) error {
 		return nil
