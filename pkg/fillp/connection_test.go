@@ -376,10 +376,9 @@ func TestScenario13_BufferUnread(t *testing.T) {
 	defer buf.Close()
 
 	data := []byte("test data")
-	buf.Write(data)
+	_ = buf.Write(data)
 
-	read := make([]byte, 4)
-	buf.Read(len(read))
+	read, _ := buf.Read(4)
 
 	buf.Unread(read)
 }

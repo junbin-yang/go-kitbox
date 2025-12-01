@@ -277,7 +277,7 @@ func TestTaskPool_Options(t *testing.T) {
 		WithOnTaskPanic(func(taskID string, v interface{}) {}),
 		WithOnShutdown(func(metrics *MetricsSnapshot) {}),
 	)
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	if pool == nil {
 		t.Fatal("Pool should not be nil")
@@ -286,10 +286,10 @@ func TestTaskPool_Options(t *testing.T) {
 
 func TestTaskPool_SubmitAsync(t *testing.T) {
 	pool := New(WithMinWorkers(2))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	executed := atomic.Bool{}
-	pool.SubmitAsync(func(ctx context.Context) error {
+	_ = pool.SubmitAsync(func(ctx context.Context) error {
 		executed.Store(true)
 		return nil
 	})
@@ -302,7 +302,7 @@ func TestTaskPool_SubmitAsync(t *testing.T) {
 
 func TestTaskPool_GetQueueLength(t *testing.T) {
 	pool := New(WithQueueSize(10), WithMinWorkers(1))
-	defer pool.ShutdownNow()
+	defer func() { _ = pool.ShutdownNow() }()
 
 	qLen := pool.GetQueueLength()
 	if qLen < 0 {

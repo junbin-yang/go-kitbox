@@ -132,7 +132,7 @@ func Test_ProductionRotate(t *testing.T) {
 
 	cfg := NewProductionRotateConfig(tmpDir + "/prod.log")
 	if cfg == nil {
-		t.Error("NewProductionRotateConfig should not return nil")
+		t.Fatal("NewProductionRotateConfig should not return nil")
 	}
 	if cfg.MaxAge != 30 {
 		t.Errorf("Expected MaxAge=30, got %d", cfg.MaxAge)
