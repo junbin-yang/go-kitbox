@@ -785,3 +785,226 @@ func TestStringEncoding(t *testing.T) {
 		t.Errorf("HexData: expected %s, got %s", pkt.HexData, decoded.HexData)
 	}
 }
+
+func TestMarshal_InvalidStruct(t *testing.T) {
+	_, err := Marshal(123)
+	if err == nil {
+		t.Error("Expected error for non-struct value")
+	}
+
+	str := "not a struct"
+	_, err = Marshal(&str)
+	if err == nil {
+		t.Error("Expected error for non-struct pointer")
+	}
+}
+
+func TestMarshal_CompileError(t *testing.T) {
+	type InvalidPacket struct {
+		Field uint32 `bin:"invalid"`
+	}
+	pkt := &InvalidPacket{Field: 123}
+	_, err := Marshal(pkt)
+	if err == nil {
+		t.Error("Expected error for invalid tag")
+	}
+}
+
+func TestUnmarshal_InvalidStruct(t *testing.T) {
+	data := []byte{1, 2, 3, 4}
+	var notPtr int
+	err := Unmarshal(data, notPtr)
+	if err == nil {
+		t.Error("Expected error for non-pointer value")
+	}
+
+	var str string
+	err = Unmarshal(data, &str)
+	if err == nil {
+		t.Error("Expected error for non-struct pointer")
+	}
+}
+
+func TestUnmarshal_CompileError(t *testing.T) {
+	type InvalidPacket struct {
+		Field uint32 `bin:"invalid"`
+	}
+	data := []byte{1, 2, 3, 4}
+	var pkt InvalidPacket
+	err := Unmarshal(data, &pkt)
+	if err == nil {
+		t.Error("Expected error for invalid tag")
+	}
+}
+
+func TestMarshalTo_InvalidStruct(t *testing.T) {
+	buf := make([]byte, 100)
+	_, err := MarshalTo(buf, 123)
+	if err == nil {
+		t.Error("Expected error for non-struct value")
+	}
+}
+
+func TestMarshalTo_CompileError(t *testing.T) {
+	type InvalidPacket struct {
+		Field uint32 `bin:"invalid"`
+	}
+	buf := make([]byte, 100)
+	pkt := &InvalidPacket{Field: 123}
+	_, err := MarshalTo(buf, pkt)
+	if err == nil {
+		t.Error("Expected error for invalid tag")
+	}
+}
+
+func TestMarshalWithPool_Error(t *testing.T) {
+	pool := NewBufferPool(128)
+	_, err := MarshalWithPool(pool, 123)
+	if err == nil {
+		t.Error("Expected error for non-struct value")
+	}
+}
+
+func TestMarshalWithPoolCopy_Error(t *testing.T) {
+	pool := NewBufferPool(128)
+	_, err := MarshalWithPoolCopy(pool, 123)
+	if err == nil {
+		t.Error("Expected error for non-struct value")
+	}
+}
+
+func TestParseTag_Checksum(t *testing.T) {
+	tests := []struct {
+		name     string
+		tag      string
+		expected string
+	}{
+		{"crc16", "0:4,crc16:0-100", "crc16:0-100"},
+		{"crc32", "0:4,crc32:10-50", "crc32:10-50"},
+		{"checksum", "0:4,checksum:0-10", "checksum:0-10"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := ParseTag(tt.tag)
+			if err != nil {
+				t.Fatalf("ParseTag failed: %v", err)
+			}
+			if info.Checksum != tt.expected {
+				t.Errorf("Expected checksum %s, got %s", tt.expected, info.Checksum)
+			}
+		})
+	}
+}
+
+func TestArrayElements_AllTypes(t *testing.T) {
+	t.Run("uint8", func(t *testing.T) {
+		type P struct {
+			Count uint8   `bin:"0:1"`
+			Arr   []uint8 `bin:"1:var,len:Count,repeat,size:1"`
+		}
+		pkt := P{Count: 2, Arr: []uint8{1, 2}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("uint16", func(t *testing.T) {
+		type P struct {
+			Count uint8    `bin:"0:1"`
+			Arr   []uint16 `bin:"1:var,len:Count,repeat,size:2:be"`
+		}
+		pkt := P{Count: 2, Arr: []uint16{100, 200}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("uint32", func(t *testing.T) {
+		type P struct {
+			Count uint8    `bin:"0:1"`
+			Arr   []uint32 `bin:"1:var,len:Count,repeat,size:4:be"`
+		}
+		pkt := P{Count: 2, Arr: []uint32{1000, 2000}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("uint64", func(t *testing.T) {
+		type P struct {
+			Count uint8    `bin:"0:1"`
+			Arr   []uint64 `bin:"1:var,len:Count,repeat,size:8:be"`
+		}
+		pkt := P{Count: 2, Arr: []uint64{10000, 20000}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("int8", func(t *testing.T) {
+		type P struct {
+			Count uint8  `bin:"0:1"`
+			Arr   []int8 `bin:"1:var,len:Count,repeat,size:1"`
+		}
+		pkt := P{Count: 2, Arr: []int8{-1, -2}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("int16", func(t *testing.T) {
+		type P struct {
+			Count uint8   `bin:"0:1"`
+			Arr   []int16 `bin:"1:var,len:Count,repeat,size:2:le"`
+		}
+		pkt := P{Count: 2, Arr: []int16{-100, -200}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("int32", func(t *testing.T) {
+		type P struct {
+			Count uint8   `bin:"0:1"`
+			Arr   []int32 `bin:"1:var,len:Count,repeat,size:4:le"`
+		}
+		pkt := P{Count: 2, Arr: []int32{-1000, -2000}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("int64", func(t *testing.T) {
+		type P struct {
+			Count uint8   `bin:"0:1"`
+			Arr   []int64 `bin:"1:var,len:Count,repeat,size:8:le"`
+		}
+		pkt := P{Count: 2, Arr: []int64{-10000, -20000}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("float32", func(t *testing.T) {
+		type P struct {
+			Count uint8     `bin:"0:1"`
+			Arr   []float32 `bin:"1:var,len:Count,repeat,size:4:be"`
+		}
+		pkt := P{Count: 2, Arr: []float32{1.5, 2.5}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+
+	t.Run("float64", func(t *testing.T) {
+		type P struct {
+			Count uint8     `bin:"0:1"`
+			Arr   []float64 `bin:"1:var,len:Count,repeat,size:8:be"`
+		}
+		pkt := P{Count: 2, Arr: []float64{3.14, 2.71}}
+		data, _ := Marshal(&pkt)
+		var decoded P
+		_ = Unmarshal(data, &decoded)
+	})
+}
