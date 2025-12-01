@@ -527,3 +527,84 @@ func TestJSONMarshal(t *testing.T) {
 		t.Error("JSON marshal returned empty result")
 	}
 }
+
+func TestLoadConfig_InvalidPath(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+	err := cm.LoadConfig("/nonexistent/path.yml")
+	if err == nil {
+		t.Error("Expected error for invalid path")
+	}
+}
+
+func TestLoadConfig_DefaultPathNotFound(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg, WithAppName("nonexistent_app_xyz"))
+	err := cm.LoadConfig("")
+	if err == nil {
+		t.Error("Expected error when default config not found")
+	}
+}
+
+func TestLoadConfig_InvalidFormat(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "invalid.yml")
+	defer os.Remove(tmpFile)
+	_ = os.WriteFile(tmpFile, []byte("invalid: yaml: content: ["), 0644)
+
+	cm := NewConfigManager(cfg)
+	err := cm.LoadConfig(tmpFile)
+	if err == nil {
+		t.Error("Expected error for invalid YAML format")
+	}
+}
+
+func TestApplyEnvOverrides_InvalidInt(t *testing.T) {
+	type TestCfg struct {
+		Port int `env:"TEST_PORT"`
+	}
+	os.Setenv("TEST_PORT", "invalid")
+	defer os.Unsetenv("TEST_PORT")
+
+	cfg := &TestCfg{Port: 8080}
+	err := applyEnvOverrides(cfg)
+	if err != nil {
+		t.Errorf("applyEnvOverrides should not return error for invalid int: %v", err)
+	}
+	if cfg.Port != 8080 {
+		t.Error("Port should remain unchanged when env value is invalid")
+	}
+}
+
+func TestApplyEnvOverrides_InvalidBool(t *testing.T) {
+	type TestCfg struct {
+		Enabled bool `env:"TEST_ENABLED"`
+	}
+	os.Setenv("TEST_ENABLED", "invalid")
+	defer os.Unsetenv("TEST_ENABLED")
+
+	cfg := &TestCfg{Enabled: true}
+	err := applyEnvOverrides(cfg)
+	if err != nil {
+		t.Errorf("applyEnvOverrides should not return error for invalid bool: %v", err)
+	}
+	if !cfg.Enabled {
+		t.Error("Enabled should remain unchanged when env value is invalid")
+	}
+}
+
+func TestFindDefaultConfigPath_WithExtension(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "testapp.yml")
+	_ = os.WriteFile(tmpFile, []byte("server:\n  port: 8080"), 0644)
+
+	cm := NewConfigManager(cfg, WithAppName("testapp"), WithDefaultPaths(filepath.Join(tmpDir, "testapp")))
+	path, err := cm.findDefaultConfigPath()
+	if err != nil {
+		t.Errorf("findDefaultConfigPath failed: %v", err)
+	}
+	if path != tmpFile {
+		t.Errorf("Expected path %s, got %s", tmpFile, path)
+	}
+}
