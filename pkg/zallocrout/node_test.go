@@ -1,7 +1,7 @@
 package zallocrout
 
 import (
-	"net/http"
+	"context"
 	"sync"
 	"testing"
 )
@@ -90,17 +90,17 @@ func TestRouteNode_Handler(t *testing.T) {
 	}
 
 	// 定义处理器和中间件
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-		// 测试处理器
+	handler := func(ctx context.Context) error {
+		return nil
 	}
 	middleware1 := func(next HandlerFunc) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-			next(w, r, params)
+		return func(ctx context.Context) error {
+			return next(ctx)
 		}
 	}
 	middleware2 := func(next HandlerFunc) HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-			next(w, r, params)
+		return func(ctx context.Context) error {
+			return next(ctx)
 		}
 	}
 
@@ -108,7 +108,7 @@ func TestRouteNode_Handler(t *testing.T) {
 	node.setHandler(handler, []Middleware{middleware1, middleware2})
 
 	// 获取处理器
-	gotHandler, gotMiddlewares := node.getHandler()
+	gotHandler, gotMiddlewares, _ := node.getHandler()
 	if gotHandler == nil {
 		t.Fatal("handler not set")
 	}
@@ -151,7 +151,7 @@ func TestRouteNode_ConcurrentAccess(t *testing.T) {
 		staticChildren: make(map[string]*RouteNode),
 	}
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	const goroutines = 100
 	const iterations = 1000
@@ -214,35 +214,6 @@ func TestNodeType(t *testing.T) {
 	}
 }
 
-// 测试匹配结果
-func TestMatchResult(t *testing.T) {
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
-	released := false
-
-	result := MatchResult{
-		Handler:    handler,
-		paramPairs: [MaxParams]paramPair{{key: "id", value: "123"}},
-		paramCount: 1,
-		Release: func() {
-			released = true
-		},
-	}
-
-	if result.Handler == nil {
-		t.Error("handler is nil")
-	}
-	id, ok := result.GetParam("id")
-	if !ok || id != "123" {
-		t.Error("params not set correctly")
-	}
-
-	// 调用释放函数
-	result.Release()
-	if !released {
-		t.Error("release function not called")
-	}
-}
-
 // 基准测试：静态子节点查找
 func BenchmarkRouteNode_FindStaticChild(b *testing.B) {
 	node := &RouteNode{
@@ -282,25 +253,5 @@ func BenchmarkRouteNode_IncrementHitCount(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		node.incrementHitCount()
-	}
-}
-
-// 测试GetParam未找到的情况
-func TestMatchResult_GetParamNotFound(t *testing.T) {
-	result := MatchResult{
-		paramPairs: [MaxParams]paramPair{{key: "id", value: "123"}},
-		paramCount: 1,
-	}
-
-	// 查找不存在的参数
-	_, ok := result.GetParam("notfound")
-	if ok {
-		t.Error("should not find non-existent param")
-	}
-
-	// 查找存在的参数
-	val, ok := result.GetParam("id")
-	if !ok || val != "123" {
-		t.Error("should find existing param")
 	}
 }

@@ -1,7 +1,7 @@
 package zallocrout
 
 import (
-	"net/http"
+	"context"
 	"sync"
 	"sync/atomic"
 )
@@ -16,7 +16,7 @@ const (
 )
 
 // 处理函数类型
-type HandlerFunc func(http.ResponseWriter, *http.Request, map[string]string)
+type HandlerFunc func(context.Context) error
 
 // 中间件类型
 type Middleware func(HandlerFunc) HandlerFunc
@@ -33,9 +33,10 @@ type RouteNode struct {
 	typ           NodeType     // 节点类型
 	handler       HandlerFunc  // 处理函数
 	middlewares   []Middleware // 预编译中间件链
-	paramChild    *RouteNode   // 参数子节点（单例）
-	wildcardChild *RouteNode   // 通配符子节点（单例）
-	paramName     []byte       // 参数名称（如 :id → "id"）
+	paramChild    *RouteNode // 参数子节点（单例）
+	wildcardChild *RouteNode // 通配符子节点（单例）
+	paramName     []byte     // 参数名称（如 :id → "id"）
+	paramNames    [][]byte   // 此路由的参数名称列表（按顺序，字节切片避免转换开销）
 
 	// 性能优化字段
 	isWildcard bool   // 预计算通配符标记
@@ -50,25 +51,6 @@ type paramPair struct {
 
 // MaxParams 最大参数数量（固定32个，覆盖99%场景）
 const MaxParams = 32
-
-// 匹配结果（不可变结构，线程安全）
-type MatchResult struct {
-	Handler     HandlerFunc         // 处理函数
-	Middlewares []Middleware        // 预编译中间件链
-	paramPairs  [MaxParams]paramPair // 固定数组（栈分配）
-	paramCount  int                 // 参数数量
-	Release     func()              // 资源释放函数
-}
-
-// 获取参数值（零分配接口）
-func (m *MatchResult) GetParam(key string) (string, bool) {
-	for i := 0; i < m.paramCount; i++ {
-		if m.paramPairs[i].key == key {
-			return m.paramPairs[i].value, true
-		}
-	}
-	return "", false
-}
 
 // 插入子节点
 func (n *RouteNode) insertChild(seg string, child *RouteNode) {
@@ -117,11 +99,30 @@ func (n *RouteNode) setHandler(handler HandlerFunc, middlewares []Middleware) {
 	}
 }
 
+// 设置处理器和参数名称列表
+func (n *RouteNode) setHandlerWithParams(handler HandlerFunc, middlewares []Middleware, paramNames [][]byte) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.handler = handler
+	if len(middlewares) > 0 {
+		n.middlewares = append(n.middlewares[:0], middlewares...)
+	}
+	// 存储此路由的参数名称列表（字节切片）
+	if len(paramNames) > 0 {
+		n.paramNames = make([][]byte, len(paramNames))
+		for i, name := range paramNames {
+			n.paramNames[i] = make([]byte, len(name))
+			copy(n.paramNames[i], name)
+		}
+	}
+}
+
 // 获取处理器
-func (n *RouteNode) getHandler() (HandlerFunc, []Middleware) {
+func (n *RouteNode) getHandler() (HandlerFunc, []Middleware, [][]byte) {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
-	return n.handler, n.middlewares
+	return n.handler, n.middlewares, n.paramNames
 }
 
 // 增加命中计数（原子操作）

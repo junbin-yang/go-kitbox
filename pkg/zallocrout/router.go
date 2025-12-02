@@ -1,15 +1,13 @@
 package zallocrout
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 )
 
 // 热点缓存阈值（命中次数超过此值才缓存）
 const hotCacheThreshold = 100
-
-// 空的释放函数（避免闭包分配）
-var noopRelease = func() {}
 
 // 路由器核心结构
 type Router struct {
@@ -58,7 +56,16 @@ func (r *Router) AddRoute(method, path string, handler HandlerFunc, middlewares 
 	var segs [MaxParams]string
 	segsSlice := splitPathToCompressedSegs(path, segs[:0])
 
-	// 4. 逐层插入 Trie 树
+	// 4. 收集参数名称（使用字节切片避免转换开销）
+	var paramNames [][]byte
+	for _, seg := range segsSlice {
+		if isParamSeg(seg) {
+			// 去掉 ':' 前缀，直接存储字节切片
+			paramNames = append(paramNames, []byte(seg[1:]))
+		}
+	}
+
+	// 5. 逐层插入 Trie 树
 	current := root
 	for _, seg := range segsSlice {
 		// 静态路由：需要加锁避免并发写入冲突
@@ -126,10 +133,10 @@ func (r *Router) AddRoute(method, path string, handler HandlerFunc, middlewares 
 		}
 	}
 
-	// 5. 绑定处理器和中间件
-	current.setHandler(handler, middlewares)
+	// 6. 绑定处理器和中间件，并存储参数名称列表
+	current.setHandlerWithParams(handler, middlewares, paramNames)
 
-	// 6. 更新指标
+	// 7. 更新指标
 	switch current.typ {
 	case StaticCompressed:
 		r.metrics.IncrementStaticRoutes()
@@ -145,9 +152,10 @@ func (r *Router) AddRoute(method, path string, handler HandlerFunc, middlewares 
 // 匹配路由
 // method: HTTP 方法
 // path: 请求路径
+// parent: 父 context
 //
 //go:inline
-func (r *Router) Match(method, path string) (MatchResult, bool) {
+func (r *Router) Match(method, path string, parent context.Context) (context.Context, HandlerFunc, []Middleware, bool) {
 	r.metrics.IncrementTotalMatches()
 
 	// 1. 热点缓存检查（如果启用）
@@ -156,18 +164,19 @@ func (r *Router) Match(method, path string) (MatchResult, bool) {
 		if cacheVal, ok := r.hotCache.Load(cacheKey); ok {
 			r.metrics.IncrementCacheHits()
 
-			// 构建参数列表
-			var result MatchResult
+			// 构建参数数组
+			var paramPairs [MaxParams]paramPair
+			paramCount := 0
 			for k, v := range cacheVal.paramTemplate {
-				if result.paramCount < MaxParams {
-					result.paramPairs[result.paramCount] = paramPair{key: k, value: v}
-					result.paramCount++
+				if paramCount < MaxParams {
+					paramPairs[paramCount] = paramPair{key: k, value: v}
+					paramCount++
 				}
 			}
-			result.Handler = cacheVal.handler
-			result.Middlewares = cacheVal.middlewares
-			result.Release = noopRelease
-			return result, true
+
+			// 从池中获取 context（使用指针避免数组拷贝）
+			ctx := acquireContext(parent, &paramPairs, paramCount)
+			return ctx, cacheVal.handler, cacheVal.middlewares, true
 		}
 		r.metrics.IncrementCacheMisses()
 	}
@@ -178,7 +187,7 @@ func (r *Router) Match(method, path string) (MatchResult, bool) {
 		pathBytes := []byte(path)
 		pathBytes = normalizePathBytes(pathBytes)
 		if len(pathBytes) == 0 {
-			return MatchResult{}, false
+			return nil, nil, nil, false
 		}
 		normalizedPath = unsafeString(pathBytes)
 	}
@@ -193,12 +202,13 @@ func (r *Router) Match(method, path string) (MatchResult, bool) {
 	r.rootsMu.RUnlock()
 
 	if !exists {
-		return MatchResult{}, false
+		return nil, nil, nil, false
 	}
 
 	// 5. 核心匹配流程（零分配参数存储）
 	current := root
-	var result MatchResult
+	var paramPairs [MaxParams]paramPair
+	paramCount := 0
 	pathPos := 1 // 跳过开头的 '/'
 
 	for _, seg := range segsSlice {
@@ -211,12 +221,12 @@ func (r *Router) Match(method, path string) (MatchResult, bool) {
 
 		// 参数节点匹配
 		if paramChild := current.findParamChild(); paramChild != nil {
-			if result.paramCount < MaxParams {
-				result.paramPairs[result.paramCount] = paramPair{
+			if paramCount < MaxParams {
+				paramPairs[paramCount] = paramPair{
 					key:   unsafeString(paramChild.paramName),
 					value: seg,
 				}
-				result.paramCount++
+				paramCount++
 			}
 			current = paramChild
 			pathPos += len(seg) + 1
@@ -227,25 +237,34 @@ func (r *Router) Match(method, path string) (MatchResult, bool) {
 		if wildcardChild := current.findWildcardChild(); wildcardChild != nil {
 			// 直接使用原始路径的剩余部分（零分配）
 			remaining := normalizedPath[pathPos:]
-			if result.paramCount < MaxParams {
-				result.paramPairs[result.paramCount] = paramPair{key: "*", value: remaining}
-				result.paramCount++
+			if paramCount < MaxParams {
+				paramPairs[paramCount] = paramPair{key: "*", value: remaining}
+				paramCount++
 			}
 			current = wildcardChild
 			break
 		}
 
 		// 未找到匹配
-		return MatchResult{}, false
+		return nil, nil, nil, false
 	}
 
 	// 6. 检查处理器是否存在
-	handler, middlewares := current.getHandler()
+	handler, middlewares, routeParamNames := current.getHandler()
 	if handler == nil {
-		return MatchResult{}, false
+		return nil, nil, nil, false
 	}
 
-	// 7. 热点缓存更新（原子操作 + 分片 Map）
+	// 7. 使用路由定义的参数名称重新映射参数
+	// 如果路由有自己的参数名称列表，使用它；否则使用遍历时收集的名称
+	if len(routeParamNames) > 0 && len(routeParamNames) == paramCount {
+		// 重新映射参数名称（使用 unsafeString 避免内存分配）
+		for i := 0; i < paramCount && i < len(routeParamNames); i++ {
+			paramPairs[i].key = unsafeString(routeParamNames[i])
+		}
+	}
+
+	// 8. 热点缓存更新（原子操作 + 分片 Map）
 	if atomic.LoadUint32(&r.enableHotCache) == 1 && !current.isWildcard {
 		hitCount := current.incrementHitCount()
 		if hitCount > hotCacheThreshold {
@@ -255,21 +274,19 @@ func (r *Router) Match(method, path string) (MatchResult, bool) {
 				middlewares: middlewares,
 			}
 			// 缓存参数模板（如果有参数）
-			if result.paramCount > 0 {
-				cacheData.paramTemplate = make(map[string]string, result.paramCount)
-				for i := 0; i < result.paramCount; i++ {
-					cacheData.paramTemplate[result.paramPairs[i].key] = result.paramPairs[i].value
+			if paramCount > 0 {
+				cacheData.paramTemplate = make(map[string]string, paramCount)
+				for i := 0; i < paramCount; i++ {
+					cacheData.paramTemplate[paramPairs[i].key] = paramPairs[i].value
 				}
 			}
 			r.hotCache.Store(cacheKey, cacheData)
 		}
 	}
 
-	// 8. 返回结果（零分配）
-	result.Handler = handler
-	result.Middlewares = middlewares
-	result.Release = noopRelease
-	return result, true
+	// 9. 从池中获取 context 并返回（使用指针避免数组拷贝）
+	ctx := acquireContext(parent, &paramPairs, paramCount)
+	return ctx, handler, middlewares, true
 }
 
 // 获取性能指标

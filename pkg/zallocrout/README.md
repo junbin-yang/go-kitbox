@@ -1,14 +1,15 @@
-# Zallocrout - 零分配路由器
+# Zallocrout - 零分配通用路由器
 
-零分配、高性能 HTTP 路由器，基于压缩 Trie 树和无锁设计，实现亚微秒级延迟。
+零分配、高性能通用路由器，基于压缩 Trie 树和无锁设计，实现亚微秒级延迟。支持 HTTP、RPC、CLI 等多种场景。
 
 ## 特性
 
 -   **零内存分配**：路由匹配过程 0 allocs/op
--   **亚微秒延迟**：静态路由匹配 133.8 ns/op
--   **高吞吐量**：870 万+ QPS（i7-12700 @ 20 并发）
+-   **亚微秒延迟**：静态路由匹配 155.9 ns/op
+-   **高吞吐量**：640 万+ QPS（i7-4770 @ 8 并发）
 -   **无锁静态路由**：90% 以上请求完全无锁
 -   **热点缓存**：16 分片缓存 + LRU 淘汰
+-   **通用设计**：基于 context.Context，适用更多场景
 -   **生产就绪**：内置监控指标、路由验证、优雅降级
 
 ## 设计理念
@@ -18,12 +19,15 @@ zallocrout 通过以下方式实现极致性能：
 1. **内存即性能**：消除所有不必要的内存分配
 2. **无锁优先**：静态路由使用无锁哈希查找
 3. **编译器友好**：内联提示和栈分配优化
-4. **四层流水线**：预处理 → 缓存 → 匹配 → 资源管理
+4. **通用架构**：基于 context.Context，解耦具体协议
 
 ## 架构设计
 
 ```
 ┌─────────────────────────────────────────────────┐
+│ Context 层: 池化 context + 固定数组参数存储       │
+│ (context.go)                                    │
+├─────────────────────────────────────────────────┤
 │ 预处理层: 路径规范化 + 零分配拆分                 │
 │ (preprocess.go)                                 │
 ├─────────────────────────────────────────────────┤
@@ -38,186 +42,208 @@ zallocrout 通过以下方式实现极致性能：
 └─────────────────────────────────────────────────┘
 ```
 
-### 四层架构代码接口
+## 核心 API
 
-#### 1. 预处理层（preprocess.go）
-
-```go
-// 路径规范化检查
-func needsNormalization(path string) bool
-
-// 零分配路径规范化
-func normalizePathBytes(path []byte) []byte
-
-// 零分配路径拆分
-func splitPathToCompressedSegs(path string, buf []string) []string
-
-// 路由验证
-func validateRoute(path string) error
-```
-
-#### 2. 缓存层（cache.go）
+### 路由器
 
 ```go
-// 分片缓存
-type shardedMap struct {
-    shards     [16]sync.Map
-    entryCount [16]int64
-}
-
-func (sm *shardedMap) Load(key string) (*cacheEntry, bool)
-func (sm *shardedMap) Store(key string, entry *cacheEntry)
-func (sm *shardedMap) Delete(key string)
-func (sm *shardedMap) Clear()
-func (sm *shardedMap) Stats() (int64, [16]int64)
-```
-
-#### 3. 匹配层（router.go + node.go）
-
-```go
-// 路由器
-type Router struct {
-    roots       map[string]*RouteNode
-    resourceMgr *resourceManager
-    hotCache    *shardedMap
-    metrics     *RouterMetrics
-}
-
-func (r *Router) AddRoute(method, path string, handler HandlerFunc, middlewares ...Middleware) error
-func (r *Router) Match(method, path string) (MatchResult, bool)
-
-// 路由节点
-type RouteNode struct {
-    staticChildren map[string]*RouteNode
-    paramChild     *RouteNode
-    wildcardChild  *RouteNode
-}
-
-func (n *RouteNode) findStaticChild(seg string) (*RouteNode, bool)
-func (n *RouteNode) findParamChild() *RouteNode
-func (n *RouteNode) findWildcardChild() *RouteNode
-```
-
-#### 4. 资源层（resource.go）
-
-```go
-// 资源管理器
-type resourceManager struct {
-    nodePool  sync.Pool
-    paramPool sync.Pool
-    segsPool  sync.Pool
-}
-
-func (rm *resourceManager) acquireNode() *RouteNode
-func (rm *resourceManager) releaseNode(n *RouteNode)
-func (rm *resourceManager) acquireParamMap() map[string]string
-func (rm *resourceManager) releaseParamMap(params map[string]string)
-
-// 零拷贝转换
-func unsafeString(b []byte) string
-func unsafeBytes(s string) []byte
-```
-
-## 核心组件
-
-### Router（路由器）
-
-主路由结构，包含：
-
--   HTTP 方法分层的根节点（GET/POST 等独立树）
--   全局资源管理器
--   16 分片热点缓存
--   性能指标统计
-
-### RouteNode（路由节点）
-
-Trie 树节点，内存对齐优化：
-
--   静态子节点：无锁哈希表，O(1) 查找
--   动态子节点：参数节点和通配符节点，细粒度锁
--   处理函数和预编译中间件链
-
-### Resource Manager（资源管理器）
-
-全局资源池化：
-
--   路由节点池
--   参数 Map 池
--   路径片段切片池
-
-### Sharded Cache（分片缓存）
-
-16 分片设计，解决 sync.Map 写入瓶颈：
-
--   FNV-1a 哈希分片选择
--   每分片独立 LRU 淘汰
--   原子计数器统计
-
-## 使用方法
-
-### 基础示例
-
-```go
-import "github.com/junbin-yang/go-kitbox/pkg/zallocrout"
-
 // 创建路由器
 router := zallocrout.NewRouter()
 
 // 注册路由
-router.AddRoute("GET", "/users/:id", userHandler)
-router.AddRoute("POST", "/users", createUserHandler)
-router.AddRoute("GET", "/files/*path", fileHandler)
+router.AddRoute(method, path string, handler HandlerFunc, middlewares ...Middleware) error
 
-// 匹配路由
-result, ok := router.Match("GET", "/users/123")
-if !ok {
-    // 处理 404
-    return
-}
-defer result.Release() // 重要：释放资源
-
-// 获取参数
-if id, ok := result.GetParam("id"); ok {
-    // 使用 id
-}
-
-// 执行处理函数
-result.Handler(w, r, nil)
+// 匹配路由（返回 context）
+ctx, handler, middlewares, ok := router.Match(method, path string, parent context.Context)
 ```
 
-### 使用中间件
+### 处理函数和中间件
 
 ```go
-// 定义中间件
-authMiddleware := func(next zallocrout.HandlerFunc) zallocrout.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request, params map[string]string) {
-        // 认证逻辑
-        next(w, r, params)
+// 处理函数类型（基于 context）
+type HandlerFunc func(context.Context) error
+
+// 中间件类型
+type Middleware func(HandlerFunc) HandlerFunc
+```
+
+### Context 辅助函数
+
+```go
+// 获取路由参数
+value, ok := zallocrout.GetParam(ctx, "id")
+
+// 设置自定义值
+ok := zallocrout.SetValue(ctx, "key", value)
+
+// 执行 handler 并自动释放 context（推荐）
+err := zallocrout.ExecuteHandler(ctx, handler, middlewares)
+
+// 手动释放 context（高级用法）
+zallocrout.ReleaseContext(ctx)
+```
+
+## 使用示例
+
+### HTTP 服务器
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "net/http"
+    "github.com/junbin-yang/go-kitbox/pkg/zallocrout"
+)
+
+// HTTP 适配器
+type HTTPAdapter struct {
+    router *zallocrout.Router
+}
+
+func (h *HTTPAdapter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    ctx, handler, middlewares, ok := h.router.Match(r.Method, r.URL.Path, r.Context())
+    if !ok {
+        http.NotFound(w, r)
+        return
+    }
+
+    // 设置 HTTP 相关值到 context
+    zallocrout.SetValue(ctx, "http.ResponseWriter", w)
+    zallocrout.SetValue(ctx, "http.Request", r)
+
+    // 执行处理器（自动释放 context）
+    if err := zallocrout.ExecuteHandler(ctx, handler, middlewares); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
     }
 }
 
-// 注册带中间件的路由
-router.AddRoute("GET", "/admin/users", adminHandler, authMiddleware)
+// 业务处理器
+func getUserHandler(ctx context.Context) error {
+    w := ctx.Value("http.ResponseWriter").(http.ResponseWriter)
+    userID, _ := zallocrout.GetParam(ctx, "id")
+
+    w.Header().Set("Content-Type", "application/json")
+    fmt.Fprintf(w, `{"user_id":"%s"}`, userID)
+    return nil
+}
+
+// 中间件
+func loggingMiddleware(next zallocrout.HandlerFunc) zallocrout.HandlerFunc {
+    return func(ctx context.Context) error {
+        r := ctx.Value("http.Request").(*http.Request)
+        log.Printf("[%s] %s", r.Method, r.URL.Path)
+        return next(ctx)
+    }
+}
+
+func main() {
+    router := zallocrout.NewRouter()
+    router.AddRoute("GET", "/users/:id", getUserHandler, loggingMiddleware)
+
+    http.ListenAndServe(":8080", &HTTPAdapter{router: router})
+}
 ```
 
-### 性能指标
+### RPC 服务
 
 ```go
-// 获取指标
-metrics := router.Metrics()
-fmt.Printf("缓存命中率: %.2f%%\n", router.CacheHitRate()*100)
-fmt.Printf("总匹配次数: %d\n", metrics.TotalMatches)
-fmt.Printf("静态路由数: %d\n", metrics.StaticRoutes)
-fmt.Printf("参数路由数: %d\n", metrics.ParamRoutes)
+package main
 
-// 缓存管理
-router.EnableHotCache()   // 启用热点缓存
-router.DisableHotCache()  // 禁用热点缓存
-router.ClearHotCache()    // 清空缓存
+import (
+    "context"
+    "encoding/json"
+    "github.com/junbin-yang/go-kitbox/pkg/zallocrout"
+)
 
-// 缓存统计
-total, distribution := router.CacheStats()
-fmt.Printf("总缓存条目: %d\n", total)
+type RPCAdapter struct {
+    router *zallocrout.Router
+}
+
+func (a *RPCAdapter) HandleRequest(req *RPCRequest) *RPCResponse {
+    path := "/" + req.Method
+    ctx, handler, middlewares, ok := a.router.Match("RPC", path, context.Background())
+    if !ok {
+        return &RPCResponse{Error: &RPCError{Code: -32601, Message: "Method not found"}}
+    }
+
+    zallocrout.SetValue(ctx, "rpc.request", req)
+    zallocrout.SetValue(ctx, "rpc.params", req.Params)
+
+    // 执行处理器（自动释放 context）
+    if err := zallocrout.ExecuteHandler(ctx, handler, middlewares); err != nil {
+        return &RPCResponse{Error: &RPCError{Code: -32603, Message: err.Error()}}
+    }
+
+    result, _ := ctx.Value("result").(interface{})
+    return &RPCResponse{Result: result, ID: req.ID}
+}
+
+func getUserRPC(ctx context.Context) error {
+    params := ctx.Value("rpc.params").(json.RawMessage)
+    var userID string
+    json.Unmarshal(params, &userID)
+
+    result := map[string]interface{}{"id": userID, "name": "User " + userID}
+    zallocrout.SetValue(ctx, "result", result)
+    return nil
+}
+
+func main() {
+    router := zallocrout.NewRouter()
+    router.AddRoute("RPC", "/user.get", getUserRPC)
+
+    adapter := &RPCAdapter{router: router}
+    // 使用 adapter.HandleRequest() 处理 RPC 请求
+}
+```
+
+### CLI 工具
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+    "strings"
+    "github.com/junbin-yang/go-kitbox/pkg/zallocrout"
+)
+
+type CLIAdapter struct {
+    router *zallocrout.Router
+}
+
+func (a *CLIAdapter) Execute(args []string) error {
+    path := "/" + strings.Join(args, "/")
+    ctx, handler, middlewares, ok := a.router.Match("CLI", path, context.Background())
+    if !ok {
+        return fmt.Errorf("unknown command: %s", strings.Join(args, " "))
+    }
+
+    zallocrout.SetValue(ctx, "cli.args", args)
+    zallocrout.SetValue(ctx, "cli.stdout", os.Stdout)
+
+    // 执行处理器（自动释放 context）
+    return zallocrout.ExecuteHandler(ctx, handler, middlewares)
+}
+
+func userGetCommand(ctx context.Context) error {
+    userID, _ := zallocrout.GetParam(ctx, "id")
+    stdout := ctx.Value("cli.stdout").(*os.File)
+    fmt.Fprintf(stdout, "User ID: %s\n", userID)
+    return nil
+}
+
+func main() {
+    router := zallocrout.NewRouter()
+    router.AddRoute("CLI", "/user/get/:id", userGetCommand)
+
+    adapter := &CLIAdapter{router: router}
+    adapter.Execute(os.Args[1:])
+}
 ```
 
 ## 路由类型
@@ -238,7 +264,7 @@ router.AddRoute("GET", "/users/:id/posts/:postId", handler)
 ```
 
 -   使用 `:` 前缀定义参数
--   通过 `result.GetParam()` 提取参数值
+-   通过 `zallocrout.GetParam(ctx, "id")` 提取参数值
 -   细粒度锁保护
 
 ### 通配符路由
@@ -253,24 +279,182 @@ router.AddRoute("GET", "/files/*path", handler)
 
 ## 性能指标
 
-| 场景           | 预期性能    |
-| -------------- | ----------- |
-| 静态路由 (P99) | < 30ns      |
-| 参数路由 (P99) | < 60ns      |
-| 通配符路由     | < 80ns      |
-| 缓存命中 (P99) | < 20ns      |
-| 吞吐量         | 300 万+ QPS |
-| GC 停顿 (P99)  | < 0.5ms     |
-| 内存分配       | 0 allocs/op |
+```go
+// 获取指标
+metrics := router.Metrics()
+fmt.Printf("缓存命中率: %.2f%%\n", router.CacheHitRate()*100)
+fmt.Printf("总匹配次数: %d\n", metrics.TotalMatches)
+
+// 缓存管理
+router.EnableHotCache()   // 启用热点缓存
+router.DisableHotCache()  // 禁用热点缓存
+router.ClearHotCache()    // 清空缓存
+```
+
+## 测试
+
+### 测试覆盖率
+
+```bash
+# 运行所有测试并查看覆盖率
+go test -v -cover
+
+# 输出结果
+coverage: 95.9% of statements
+```
+
+### 单元测试
+
+包含完整的单元测试套件，覆盖所有核心功能：
+
+```bash
+# 运行所有单元测试
+go test -v
+
+# 运行特定测试
+go test -v -run TestRouter_StaticRoute
+go test -v -run TestRouter_ParamRoute
+go test -v -run TestRouter_WildcardRoute
+```
+
+**测试内容包括**：
+
+1. **基础路由匹配**
+   - 静态路由、参数路由、通配符路由
+   - 多参数路由、复杂嵌套路由
+   - 404 处理、路径规范化
+
+2. **路由优先级**（新增）
+   - 静态路由 vs 参数路由优先级
+   - 参数路由 vs 通配符路由优先级
+   - 混合路由类型场景
+
+3. **边界情况**（新增）
+   - 根路径匹配
+   - 特殊字符在参数中
+   - 同名参数在不同位置
+   - HTTP 方法隔离
+
+4. **中间件和 Context**
+   - 中间件执行顺序
+   - Context 参数读写
+   - Context 池化和释放
+
+5. **缓存和性能**
+   - 热点缓存命中
+   - 缓存启用/禁用
+   - 并发访问安全
+
+6. **指标和监控**
+   - 性能指标收集
+   - 缓存统计信息
+   - 路由计数
+
+### 集成测试
+
+提供完整的集成测试示例，验证实际应用场景：
+
+#### HTTP 集成测试
+
+```bash
+# 运行 HTTP 单元测试（使用 httptest）
+cd examples/zallocrout_example/http
+go test -v -run TestHTTP
+
+# 运行 HTTP 集成测试（使用 netconn 真实网络）
+go test -v -run Integration
+
+# 运行并发测试
+go test -v -run TestHTTP_Integration_ConcurrentRequests
+```
+
+**HTTP 测试特点**：
+- ✅ 单元测试：使用 `httptest` 快速验证路由逻辑
+- ✅ 集成测试：使用 `pkg/netconn` 进行真实 TCP 连接测试
+- ✅ 端到端验证：服务端和客户端都使用 netconn 实现
+- ✅ 并发场景：验证 10 个并发客户端
+
+详细文档：[examples/zallocrout_example/http/README.md](../../examples/zallocrout_example/http/README.md)
+
+#### RPC 集成测试
+
+```bash
+# 运行 RPC 测试
+cd examples/zallocrout_example/rpc
+go test -v
+```
+
+测试内容：
+- JSON-RPC 2.0 协议实现
+- 方法路由和参数解析
+- 错误处理（Method not found）
+
+#### CLI 集成测试
+
+```bash
+# 运行 CLI 测试
+cd examples/zallocrout_example/cli
+go test -v
+```
+
+测试内容：
+- 命令行参数解析
+- 子命令路由
+- 未知命令处理
+
+### 基准测试
+
+运行性能基准测试：
+
+```bash
+# 路由器核心基准测试
+go test -bench=. -benchmem
+
+# HTTP 集成基准测试（真实网络）
+cd examples/zallocrout_example/http
+go test -bench=BenchmarkHTTP_Integration_WithNetConn -benchmem
+```
+
+## 性能测试结果
+
+实际测试结果（Intel i7-4770 @ 3.40GHz）：
+
+```
+路由匹配（零分配）：
+BenchmarkRouter_MatchStatic-8           23768023    155.9 ns/op    0 B/op    0 allocs/op
+BenchmarkRouter_MatchParam-8            18532712    197.4 ns/op    0 B/op    0 allocs/op
+BenchmarkRouter_MatchParamNoCache-8     20795749    164.4 ns/op    0 B/op    0 allocs/op
+BenchmarkRouter_MatchWildcard-8         13538740    265.8 ns/op    0 B/op    0 allocs/op
+BenchmarkRouter_MatchCacheHit-8         18682422    190.7 ns/op    0 B/op    0 allocs/op
+
+Context 操作（零分配）：
+BenchmarkRouteContext_GetParam-8       942756850     3.839 ns/op    0 B/op    0 allocs/op
+BenchmarkRouteContext_SetValue-8       151526407    25.96 ns/op    0 B/op    0 allocs/op
+BenchmarkRouteContext_Value-8          542621894     6.452 ns/op    0 B/op    0 allocs/op
+BenchmarkContextPool-8                 177534516    20.21 ns/op    0 B/op    0 allocs/op
+BenchmarkContextPool_Parallel-8        619946894     5.845 ns/op    0 B/op    0 allocs/op
+
+核心组件（零分配）：
+BenchmarkRouteNode_FindStaticChild-8   338678972    10.74 ns/op    0 B/op    0 allocs/op
+BenchmarkNormalizePathBytes-8           71235076    49.96 ns/op    0 B/op    0 allocs/op
+BenchmarkSplitPathToCompressedSegs-8   100000000    32.29 ns/op    0 B/op    0 allocs/op
+BenchmarkUnsafeString-8               1000000000     0.5124 ns/op  0 B/op    0 allocs/op
+```
+
+**性能说明**：
+- ✅ **零分配保证**：所有路由匹配和 Context 操作均为 0 allocs/op
+- ✅ **亚微秒延迟**：静态路由匹配 ~156 ns/op，参数路由 ~197 ns/op
+- ✅ **高并发性能**：并行 Context 池化操作仅 5.8 ns/op
+- ✅ **极速参数访问**：GetParam 仅需 3.8 ns/op
 
 ## 实现细节
 
-### 零分配路径处理
+### 零分配 Context 设计
 
--   使用 `bytesconv` 包实现零拷贝 []byte ↔ string 转换
--   小路径栈分配（最多 32 个片段）
--   大路径使用可复用缓冲池
--   原地路径规范化
+-   固定数组存储参数：`[MaxParams]paramPair`（栈分配）
+-   固定数组存储自定义值：`[MaxValues]valuePair`（栈分配）
+-   Context 池化：复用 routeContext 结构
+-   完全零堆内存分配
 
 ### 无锁静态匹配
 
@@ -283,53 +467,11 @@ router.AddRoute("GET", "/files/*path", handler)
 -   16 个分片降低竞争
 -   FNV-1a 哈希分布
 -   每分片 LRU 淘汰（满时淘汰 10%）
--   原子计数器跟踪命中
-
-### 内存布局优化
-
--   高频字段放在结构体前部
--   CPU 缓存行对齐
--   关键函数内联提示
--   优先栈分配
-
-## 路由验证
-
-注册时验证路由规则：
-
--   必须以 `/` 开头
--   不能包含 `//`、`/./`、`/../`
--   参数名只能包含字母、数字、下划线
--   通配符必须是最后一个片段
-
-## 性能测试
-
-运行基准测试：
-
-```bash
-go test -bench=. -benchmem
-```
-
-实际测试结果（12th Gen Intel i7-12700）：
-
-```
-路由匹配（零分配）：
-BenchmarkRouter_MatchStatic-20           8746125    133.8 ns/op    0 B/op    0 allocs/op
-BenchmarkRouter_MatchParam-20            7548094    156.4 ns/op    0 B/op    0 allocs/op
-BenchmarkRouter_MatchWildcard-20         5889656    201.1 ns/op    0 B/op    0 allocs/op
-BenchmarkRouter_MatchCacheHit-20         7755961    155.8 ns/op    0 B/op    0 allocs/op
-
-核心组件（零分配）：
-BenchmarkRouteNode_FindStaticChild-20   201870769    5.79 ns/op    0 B/op    0 allocs/op
-BenchmarkNormalizePathBytes-20           44535494   26.51 ns/op    0 B/op    0 allocs/op
-BenchmarkSplitPathToCompressedSegs-20    65109464   19.35 ns/op    0 B/op    0 allocs/op
-BenchmarkUnsafeString-20               1000000000    0.30 ns/op    0 B/op    0 allocs/op
-```
-
-**说明**：路由匹配的核心路径（Match 方法）实现了真正的零分配。其他测试（如 ShardedMap_Store/Load、ValidateRoute）有分配是因为测试本身创建对象或使用标准库函数，不在匹配的热路径上。
 
 ## 限制
 
--   每个路由最多 32 个参数（覆盖 99% 使用场景）
+-   每个路由最多 32 个参数（覆盖 99.9% 场景）
+-   每个 context 最多 6 个自定义值（可通过标准 context.WithValue 扩展）
 -   缓存限制为 16,000 条目（每分片 1000 条）
 -   通配符路由不会被缓存
 

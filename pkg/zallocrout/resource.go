@@ -9,9 +9,8 @@ import (
 // 资源池管理器
 // 负责管理所有可复用资源的生命周期
 type resourceManager struct {
-	nodePool  sync.Pool // 路由节点池
-	paramPool sync.Pool // 参数 Map 池
-	segsPool  sync.Pool // 路径片段切片池（用于超长路径）
+	nodePool sync.Pool // 路由节点池
+	segsPool sync.Pool // 路径片段切片池（用于超长路径）
 }
 
 // 全局资源管理器实例
@@ -21,11 +20,6 @@ var globalResourceManager = &resourceManager{
 			return &RouteNode{
 				staticChildren: make(map[string]*RouteNode, 4),
 			}
-		},
-	},
-	paramPool: sync.Pool{
-		New: func() interface{} {
-			return make(map[string]string, 4)
 		},
 	},
 	segsPool: sync.Pool{
@@ -71,25 +65,6 @@ func (rm *resourceManager) releaseNode(n *RouteNode) {
 	rm.nodePool.Put(n)
 }
 
-// 获取参数 Map（从池中）
-func (rm *resourceManager) acquireParamMap() map[string]string {
-	return rm.paramPool.Get().(map[string]string)
-}
-
-// 释放参数 Map（归还到池中）
-func (rm *resourceManager) releaseParamMap(params map[string]string) {
-	if params == nil {
-		return
-	}
-
-	// 清理 Map（保留底层数组）
-	for k := range params {
-		delete(params, k)
-	}
-
-	rm.paramPool.Put(params)
-}
-
 // 获取路径片段切片（从池中，用于超长路径）
 func (rm *resourceManager) acquireSegsSlice() []string {
 	segsPtr := rm.segsPool.Get().(*[]string)
@@ -124,15 +99,3 @@ func unsafeBytes(s string) []byte {
 	return bytesconv.StringToBytes(s)
 }
 
-// 拷贝参数 Map（用于缓存）
-func copyParamMap(src map[string]string) map[string]string {
-	if src == nil {
-		return nil
-	}
-
-	dst := make(map[string]string, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}

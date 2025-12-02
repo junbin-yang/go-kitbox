@@ -1,8 +1,8 @@
 package zallocrout
 
 import (
+	"context"
 	"fmt"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,7 +13,7 @@ import (
 func TestShardedMap_BasicOperations(t *testing.T) {
 	sm := newShardedMap()
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 	entry := &cacheEntry{
 		handler:       handler,
 		paramTemplate: map[string]string{"id": "123"},
@@ -43,7 +43,7 @@ func TestShardedMap_BasicOperations(t *testing.T) {
 func TestShardedMap_ShardDistribution(t *testing.T) {
 	sm := newShardedMap()
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	// 插入 1000 个条目
 	for i := 0; i < 1000; i++ {
@@ -79,7 +79,7 @@ func TestShardedMap_ShardDistribution(t *testing.T) {
 func TestShardedMap_LRUEviction(t *testing.T) {
 	sm := newShardedMap()
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	// 找到一个分片，插入超过 maxEntriesPerShard 的条目
 	// 为了确保条目落在同一个分片，我们需要找到哈希到同一个分片的 key
@@ -119,7 +119,7 @@ func TestShardedMap_LRUEviction(t *testing.T) {
 func TestShardedMap_ConcurrentAccess(t *testing.T) {
 	sm := newShardedMap()
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	const goroutines = 100
 	const iterations = 100
@@ -166,7 +166,7 @@ func TestShardedMap_ConcurrentAccess(t *testing.T) {
 func TestShardedMap_HitCount(t *testing.T) {
 	sm := newShardedMap()
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 	entry := &cacheEntry{
 		handler:       handler,
 		paramTemplate: map[string]string{"id": "123"},
@@ -192,7 +192,7 @@ func TestShardedMap_HitCount(t *testing.T) {
 func TestShardedMap_Clear(t *testing.T) {
 	sm := newShardedMap()
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	// 插入多个条目
 	for i := 0; i < 100; i++ {
@@ -224,7 +224,7 @@ func TestShardedMap_Clear(t *testing.T) {
 func TestShardedMap_TimestampUpdate(t *testing.T) {
 	sm := newShardedMap()
 
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 	entry := &cacheEntry{
 		handler:       handler,
 		paramTemplate: map[string]string{"id": "123"},
@@ -271,7 +271,7 @@ func TestShardedMap_GetShard(t *testing.T) {
 // 基准测试：缓存存储
 func BenchmarkShardedMap_Store(b *testing.B) {
 	sm := newShardedMap()
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -288,7 +288,7 @@ func BenchmarkShardedMap_Store(b *testing.B) {
 // 基准测试：缓存加载
 func BenchmarkShardedMap_Load(b *testing.B) {
 	sm := newShardedMap()
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	// 预先插入条目
 	for i := 0; i < 1000; i++ {
@@ -311,7 +311,7 @@ func BenchmarkShardedMap_Load(b *testing.B) {
 // 基准测试：并发缓存访问
 func BenchmarkShardedMap_ConcurrentLoad(b *testing.B) {
 	sm := newShardedMap()
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	// 预先插入条目
 	for i := 0; i < 1000; i++ {
@@ -340,7 +340,7 @@ func BenchmarkShardedMap_ConcurrentLoad(b *testing.B) {
 // 测试Store触发淘汰
 func TestShardedMap_StoreEviction(t *testing.T) {
 	sm := newShardedMap()
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	// 使用固定前缀确保落到同一分片
 	prefix := "A"
@@ -362,7 +362,7 @@ func TestShardedMap_StoreEviction(t *testing.T) {
 // 测试evictLRU淘汰机制
 func TestShardedMap_EvictLRU(t *testing.T) {
 	sm := newShardedMap()
-	handler := func(w http.ResponseWriter, r *http.Request, params map[string]string) {}
+	handler := func(ctx context.Context) error { return nil }
 
 	// 找到一个固定的分片索引
 	testKey := "GET:/test/0"
