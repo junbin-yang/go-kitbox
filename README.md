@@ -28,6 +28,7 @@ go get github.com/junbin-yang/go-kitbox
 | [fillp](pkg/fillp/)               | 基于 UDP 的可靠传输协议（类 TCP）                    | [📖 文档](pkg/fillp/README.md)        | [💡 示例](examples/fillp_example/)        |
 | [congestion](pkg/congestion/)     | 网络拥塞控制算法（CUBIC/BBR/Reno/Vegas）             | [📖 文档](pkg/congestion/README.md)   | [💡 示例](examples/fillp_example/)        |
 | [binpack](pkg/binpack/)           | 二进制协议编解码器，支持代码生成和零反射开销         | [📖 文档](pkg/binpack/README.md)      | [💡 示例](examples/binpack_example/)      |
+| [zallocrout](pkg/zallocrout/)     | 零临时内存分配，高性能的 HTTP 路由器                 | [📖 文档](pkg/zallocrout/README.md)   | [💡 示例](examples/zallocrout_example/)   |
 
 ## 测试
 
