@@ -309,6 +309,7 @@ func TestRouter_HotCache(t *testing.T) {
 
 	// 验证缓存命中
 	metrics := router.Metrics()
+	defer router.ResetMetrics()
 	if metrics.CacheHits == 0 {
 		t.Error("cache hits should be > 0")
 	}

@@ -294,6 +294,11 @@ func (r *Router) Metrics() RouterMetrics {
 	return r.metrics.Snapshot()
 }
 
+// 重置性能指标
+func (r *Router) ResetMetrics() {
+	r.metrics.Reset()
+}
+
 // 获取缓存命中率
 func (r *Router) CacheHitRate() float64 {
 	return r.metrics.CacheHitRate()
