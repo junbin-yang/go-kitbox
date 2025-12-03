@@ -1,10 +1,11 @@
 package zallocrout
 
 import (
-	"hash/maphash"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/dgryski/go-wyhash"
 )
 
 // 分片数量（16 分片，降低竞争）
@@ -15,82 +16,127 @@ const maxEntriesPerShard = 1000
 
 // 缓存条目
 type cacheEntry struct {
-	handler       HandlerFunc       // 处理函数
-	middlewares   []Middleware      // 预编译中间件链
-	paramTemplate map[string]string // 参数模板
-	timestamp     int64             // 时间戳（LRU 淘汰用）
-	hitCount      uint64            // 命中次数
+	handler     HandlerFunc          // 处理函数
+	middlewares []Middleware         // 预编译中间件链
+	paramPairs  [MaxParams]paramPair // 参数数组
+	paramCount  int                  // 参数数量
+	timestamp   int64                // 时间戳（LRU 淘汰用）
+	hitCount    uint64               // 命中次数
+}
+
+// 复合缓存键
+type cacheKey struct {
+	method string
+	path   string
+}
+
+// 分片缓存
+type cacheShard struct {
+	mu      sync.Mutex  // 写锁（只在写入时使用）
+	entries atomic.Pointer[map[cacheKey]*cacheEntry]  // 原子指针，无锁读
+	count   int64
 }
 
 // 分片热点缓存
-// 使用 16 个 sync.Map 分片，解决 sync.Map 写入瓶颈
 type shardedMap struct {
-	shards     [shardCount]sync.Map // 16 个分片
-	entryCount [shardCount]int64    // 每个分片的条目数
-	seed       maphash.Seed         // 哈希种子
+	shards [shardCount]cacheShard
 }
 
 // 创建分片缓存
 func newShardedMap() *shardedMap {
-	return &shardedMap{
-		seed: maphash.MakeSeed(),
+	sm := &shardedMap{}
+	for i := 0; i < shardCount; i++ {
+		m := make(map[cacheKey]*cacheEntry, 64)
+		sm.shards[i].entries.Store(&m)
 	}
+	return sm
 }
 
-// 计算分片索引（使用 maphash 替代 FNV）
-func (sm *shardedMap) getShard(key string) int {
-	h := maphash.String(sm.seed, key)
+// 计算分片索引
+func (sm *shardedMap) getShard(key cacheKey) int {
+	h := wyhash.Hash([]byte(key.method), 0)
+	h ^= wyhash.Hash([]byte(key.path), 0)
 	return int(h % shardCount)
 }
 
-// 加载缓存条目
-func (sm *shardedMap) Load(key string) (*cacheEntry, bool) {
-	shardIdx := sm.getShard(key)
-	val, ok := sm.shards[shardIdx].Load(key)
-	if !ok {
+//go:inline
+func (sm *shardedMap) LoadWithMethodPath(method, path string) (*cacheEntry, bool) {
+	key := cacheKey{method: method, path: path}
+
+	// 内联哈希计算
+	h := wyhash.Hash([]byte(method), 0)
+	h ^= wyhash.Hash([]byte(path), 0)
+	shardIdx := int(h % shardCount)
+
+	shard := &sm.shards[shardIdx]
+
+	// 无锁读取：直接加载 map 指针
+	entriesPtr := shard.entries.Load()
+	if entriesPtr == nil {
 		return nil, false
 	}
 
-	entry := val.(*cacheEntry)
-	// 只更新命中次数，减少时间戳更新开销
-	atomic.AddUint64(&entry.hitCount, 1)
-
-	return entry, true
+	entry, ok := (*entriesPtr)[key]
+	return entry, ok
 }
 
-// 存储缓存条目
-func (sm *shardedMap) Store(key string, entry *cacheEntry) {
+// 基于 Copy-on-Write 写入
+func (sm *shardedMap) StoreWithMethodPath(method, path string, entry *cacheEntry) {
+	key := cacheKey{method: method, path: path}
 	shardIdx := sm.getShard(key)
 
+	shard := &sm.shards[shardIdx]
+
 	// 检查分片是否已满，需要淘汰
-	count := atomic.LoadInt64(&sm.entryCount[shardIdx])
-	if count >= maxEntriesPerShard {
+	if atomic.LoadInt64(&shard.count) >= maxEntriesPerShard {
 		sm.evictLRU(shardIdx)
 	}
 
-	// 存储条目
+	// Copy-on-Write：创建新 map 副本
+	shard.mu.Lock()
+	oldEntriesPtr := shard.entries.Load()
+	oldEntries := *oldEntriesPtr
+
+	// 创建新 map（复制旧数据 + 新数据）
+	newEntries := make(map[cacheKey]*cacheEntry, len(oldEntries)+1)
+	for k, v := range oldEntries {
+		newEntries[k] = v
+	}
+
+	// 添加新条目
 	entry.timestamp = time.Now().UnixNano()
-	sm.shards[shardIdx].Store(key, entry)
-	atomic.AddInt64(&sm.entryCount[shardIdx], 1)
+	newEntries[key] = entry
+
+	// 原子更新指针
+	shard.entries.Store(&newEntries)
+	atomic.AddInt64(&shard.count, 1)
+	shard.mu.Unlock()
 }
 
 // LRU 淘汰（淘汰最久未使用的 10% 条目）
 func (sm *shardedMap) evictLRU(shardIdx int) {
 	type entryWithKey struct {
-		key       string
+		key       cacheKey
 		timestamp int64
 	}
 
+	shard := &sm.shards[shardIdx]
+
+	// 无锁读取当前 map
+	entriesPtr := shard.entries.Load()
+	if entriesPtr == nil {
+		return
+	}
+	oldEntries := *entriesPtr
+
 	// 收集所有条目
-	entries := make([]entryWithKey, 0, maxEntriesPerShard)
-	sm.shards[shardIdx].Range(func(key, value interface{}) bool {
-		entry := value.(*cacheEntry)
+	entries := make([]entryWithKey, 0, len(oldEntries))
+	for key, entry := range oldEntries {
 		entries = append(entries, entryWithKey{
-			key:       key.(string),
+			key:       key,
 			timestamp: atomic.LoadInt64(&entry.timestamp),
 		})
-		return true
-	})
+	}
 
 	// 如果条目数不足，不淘汰
 	if len(entries) < maxEntriesPerShard {
@@ -116,35 +162,43 @@ func (sm *shardedMap) evictLRU(shardIdx int) {
 		}
 	}
 
-	// 删除最旧的条目
-	for i := 0; i < evictCount; i++ {
-		sm.shards[shardIdx].Delete(entries[i].key)
-		atomic.AddInt64(&sm.entryCount[shardIdx], -1)
+	// 删除最旧的条目（Copy-on-Write）
+	shard.mu.Lock()
+	newEntries := make(map[cacheKey]*cacheEntry, len(oldEntries)-evictCount)
+	for k, v := range oldEntries {
+		// 检查是否在淘汰列表中
+		shouldEvict := false
+		for i := 0; i < evictCount; i++ {
+			if entries[i].key == k {
+				shouldEvict = true
+				break
+			}
+		}
+		if !shouldEvict {
+			newEntries[k] = v
+		}
 	}
-}
-
-// 删除缓存条目
-func (sm *shardedMap) Delete(key string) {
-	shardIdx := sm.getShard(key)
-	sm.shards[shardIdx].Delete(key)
-	atomic.AddInt64(&sm.entryCount[shardIdx], -1)
+	shard.entries.Store(&newEntries)
+	atomic.AddInt64(&shard.count, -int64(evictCount))
+	shard.mu.Unlock()
 }
 
 // 清空所有缓存
 func (sm *shardedMap) Clear() {
 	for i := 0; i < shardCount; i++ {
-		sm.shards[i].Range(func(key, value interface{}) bool {
-			sm.shards[i].Delete(key)
-			return true
-		})
-		atomic.StoreInt64(&sm.entryCount[i], 0)
+		shard := &sm.shards[i]
+		shard.mu.Lock()
+		emptyMap := make(map[cacheKey]*cacheEntry)
+		shard.entries.Store(&emptyMap)
+		atomic.StoreInt64(&shard.count, 0)
+		shard.mu.Unlock()
 	}
 }
 
 // 获取缓存统计信息
 func (sm *shardedMap) Stats() (totalEntries int64, shardDistribution [shardCount]int64) {
 	for i := 0; i < shardCount; i++ {
-		count := atomic.LoadInt64(&sm.entryCount[i])
+		count := atomic.LoadInt64(&sm.shards[i].count)
 		shardDistribution[i] = count
 		totalEntries += count
 	}

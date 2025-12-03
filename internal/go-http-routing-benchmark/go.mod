@@ -54,6 +54,7 @@ require (
 	github.com/akyoto/tty v0.1.3 // indirect
 	github.com/akyoto/uuid v1.1.3 // indirect
 	github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0 // indirect
+	github.com/dgryski/go-wyhash v0.0.0-20191203203029-c4841ae36371 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-macaron/inject v0.0.0-20160627170012-d8a0b8677191 // indirect
 	github.com/go-playground/form v3.1.4+incompatible // indirect

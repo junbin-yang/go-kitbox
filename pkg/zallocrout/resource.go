@@ -51,8 +51,8 @@ func (rm *resourceManager) releaseNode(n *RouteNode) {
 	n.seg = n.seg[:0]
 	n.handler = nil
 	n.middlewares = n.middlewares[:0]
-	n.paramChild = nil
-	n.wildcardChild = nil
+	n.paramChild.Store(nil)
+	n.wildcardChild.Store(nil)
 	n.paramName = n.paramName[:0]
 	n.isWildcard = false
 	n.hitCount = 0
@@ -83,19 +83,12 @@ func (rm *resourceManager) releaseSegsSlice(segs []string) {
 	rm.segsPool.Put(&segs)
 }
 
-// 零拷贝转换：[]byte → string
-// 复用项目中的 bytesconv 包
-//
 //go:inline
 func unsafeString(b []byte) string {
 	return bytesconv.BytesToString(b)
 }
 
-// 零拷贝转换：string → []byte
-// 复用项目中的 bytesconv 包
-//
 //go:inline
 func unsafeBytes(s string) []byte {
 	return bytesconv.StringToBytes(s)
 }
-

@@ -838,3 +838,29 @@ func TestRouter_MethodIsolation(t *testing.T) {
 		t.Error("DELETE /api/users should not match")
 	}
 }
+
+// 测试 Metrics 管理函数
+func TestRouter_MetricsManagement(t *testing.T) {
+	router := NewRouter()
+	handler := func(ctx context.Context) error { return nil }
+
+	// 添加路由
+	_ = router.AddRoute("GET", "/users/:id", handler)
+
+	// 测试 EnableMetrics 和 DisableMetrics
+	router.DisableMetrics()
+	ctx1, _, _, _ := router.Match("GET", "/users/123", context.Background())
+	ReleaseContext(ctx1)
+
+	router.EnableMetrics()
+	ctx2, _, _, _ := router.Match("GET", "/users/456", context.Background())
+	ReleaseContext(ctx2)
+
+	// 测试 FlushMetrics
+	router.FlushMetrics()
+	metrics := router.Metrics()
+
+	if metrics.TotalMatches == 0 {
+		t.Error("TotalMatches should be > 0 after flush")
+	}
+}

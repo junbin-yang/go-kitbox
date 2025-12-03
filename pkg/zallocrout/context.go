@@ -27,22 +27,29 @@ type routeContext struct {
 // globalContextPool Context 池（仅池化 context 结构本身）
 var globalContextPool = sync.Pool{
 	New: func() interface{} {
-		ctx := &routeContext{}
-		// 预分配容量，避免后续扩容
-		ctx.paramCount = 0
-		ctx.valueCount = 0
-		return ctx
+		return &routeContext{}
 	},
 }
 
 // acquireContext 从池中获取 context（零分配，通过值复制避免逃逸）
+//
+//go:inline
 func acquireContext(parent context.Context, paramPairs *[MaxParams]paramPair, paramCount int) *routeContext {
 	ctx := globalContextPool.Get().(*routeContext)
 	ctx.Context = parent
 	ctx.paramCount = paramCount
 	ctx.valueCount = 0
-	// 从源数组复制参数（避免指针逃逸导致堆分配）
-	if paramCount > 0 {
+	// 针对常见场景（0-2 个参数）使用直接赋值
+	switch paramCount {
+	case 0:
+		// 无参数，无需复制
+	case 1:
+		ctx.paramPairs[0] = paramPairs[0]
+	case 2:
+		ctx.paramPairs[0] = paramPairs[0]
+		ctx.paramPairs[1] = paramPairs[1]
+	default:
+		// 多参数场景使用 copy
 		copy(ctx.paramPairs[:paramCount], paramPairs[:paramCount])
 	}
 	return ctx
@@ -74,6 +81,7 @@ func (c *routeContext) Err() error {
 	return c.Context.Err()
 }
 
+// Value 获取自定义值
 func (c *routeContext) Value(key interface{}) interface{} {
 	if strKey, ok := key.(string); ok {
 		for i := 0; i < c.valueCount; i++ {
@@ -139,7 +147,7 @@ func ReleaseContext(ctx context.Context) {
 }
 
 // ExecuteHandler 执行 handler 并自动释放 context（推荐使用）
-// 这个函数会在 handler 执行完毕后自动调用 ReleaseContext，无需用户手动管理
+// 这个函数会在 handler 执行完毕后自动调用 ReleaseContext，无需手动管理
 func ExecuteHandler(ctx context.Context, handler HandlerFunc, middlewares []Middleware) error {
 	// 确保 context 会被释放
 	defer ReleaseContext(ctx)

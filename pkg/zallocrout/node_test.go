@@ -233,8 +233,9 @@ func BenchmarkRouteNode_FindStaticChild(b *testing.B) {
 func BenchmarkRouteNode_FindParamChild(b *testing.B) {
 	node := &RouteNode{
 		staticChildren: make(map[string]*RouteNode),
-		paramChild:     &RouteNode{typ: ParamNode},
 	}
+	paramNode := &RouteNode{typ: ParamNode}
+	node.paramChild.Store(paramNode)
 
 	b.ResetTimer()
 	b.ReportAllocs()

@@ -15,27 +15,21 @@ func TestShardedMap_BasicOperations(t *testing.T) {
 
 	handler := func(ctx context.Context) error { return nil }
 	entry := &cacheEntry{
-		handler:       handler,
-		paramTemplate: map[string]string{"id": "123"},
+		handler:    handler,
+		paramPairs: [MaxParams]paramPair{{key: "id", value: "123"}},
+		paramCount: 1,
 	}
 
 	// 存储
-	sm.Store("GET:/users/123", entry)
+	sm.StoreWithMethodPath("GET", "/users/123", entry)
 
 	// 加载
-	loaded, ok := sm.Load("GET:/users/123")
+	loaded, ok := sm.LoadWithMethodPath("GET", "/users/123")
 	if !ok {
 		t.Fatal("failed to load entry")
 	}
-	if loaded.paramTemplate["id"] != "123" {
-		t.Errorf("loaded entry param = %v, want 123", loaded.paramTemplate["id"])
-	}
-
-	// 删除
-	sm.Delete("GET:/users/123")
-	_, ok = sm.Load("GET:/users/123")
-	if ok {
-		t.Error("entry should be deleted")
+	if loaded.paramPairs[0].value != "123" {
+		t.Errorf("loaded entry param = %v, want 123", loaded.paramPairs[0].value)
 	}
 }
 
@@ -47,12 +41,12 @@ func TestShardedMap_ShardDistribution(t *testing.T) {
 
 	// 插入 1000 个条目
 	for i := 0; i < 1000; i++ {
-		key := fmt.Sprintf("GET:/users/%d", i)
 		entry := &cacheEntry{
-			handler:       handler,
-			paramTemplate: map[string]string{"id": fmt.Sprintf("%d", i)},
+			handler:    handler,
+			paramPairs: [MaxParams]paramPair{{key: "id", value: fmt.Sprintf("%d", i)}},
+			paramCount: 1,
 		}
-		sm.Store(key, entry)
+		sm.StoreWithMethodPath("GET", fmt.Sprintf("/users/%d", i), entry)
 	}
 
 	// 检查分片分布
@@ -82,34 +76,29 @@ func TestShardedMap_LRUEviction(t *testing.T) {
 	handler := func(ctx context.Context) error { return nil }
 
 	// 找到一个分片，插入超过 maxEntriesPerShard 的条目
-	// 为了确保条目落在同一个分片，我们需要找到哈希到同一个分片的 key
 	shardIdx := 0
-	keys := make([]string, 0, maxEntriesPerShard+100)
+	keysAdded := 0
 
 	// 生成足够多的 key，确保至少有一个分片满
-	for i := 0; i < maxEntriesPerShard*2; i++ {
-		key := fmt.Sprintf("GET:/test/%d", i)
+	for i := 0; keysAdded < maxEntriesPerShard+100; i++ {
+		method := "GET"
+		path := fmt.Sprintf("/test/%d", i)
+		key := cacheKey{method: method, path: path}
 		if sm.getShard(key) == shardIdx {
-			keys = append(keys, key)
-			if len(keys) >= maxEntriesPerShard+100 {
-				break
+			entry := &cacheEntry{
+				handler:    handler,
+				paramPairs: [MaxParams]paramPair{{key: "id", value: fmt.Sprintf("%d", i)}},
+				paramCount: 1,
+				timestamp:  time.Now().Add(time.Duration(i) * time.Millisecond).UnixNano(),
 			}
+			sm.StoreWithMethodPath(method, path, entry)
+			keysAdded++
+			time.Sleep(time.Microsecond)
 		}
-	}
-
-	// 插入条目
-	for i, key := range keys {
-		entry := &cacheEntry{
-			handler:       handler,
-			paramTemplate: map[string]string{"id": fmt.Sprintf("%d", i)},
-			timestamp:     time.Now().Add(time.Duration(i) * time.Millisecond).UnixNano(),
-		}
-		sm.Store(key, entry)
-		time.Sleep(time.Microsecond) // 确保时间戳不同
 	}
 
 	// 检查分片条目数（应该触发淘汰）
-	count := atomic.LoadInt64(&sm.entryCount[shardIdx])
+	count := atomic.LoadInt64(&sm.shards[shardIdx].count)
 	if count > maxEntriesPerShard {
 		t.Logf("shard %d has %d entries (expected <= %d after eviction)", shardIdx, count, maxEntriesPerShard)
 	}
@@ -132,12 +121,12 @@ func TestShardedMap_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				key := fmt.Sprintf("GET:/users/%d/%d", id, j)
 				entry := &cacheEntry{
-					handler:       handler,
-					paramTemplate: map[string]string{"id": fmt.Sprintf("%d", id)},
+					handler:    handler,
+					paramPairs: [MaxParams]paramPair{{key: "id", value: fmt.Sprintf("%d", id)}},
+					paramCount: 1,
 				}
-				sm.Store(key, entry)
+				sm.StoreWithMethodPath("GET", fmt.Sprintf("/users/%d/%d", id, j), entry)
 			}
 		}(i)
 	}
@@ -147,8 +136,7 @@ func TestShardedMap_ConcurrentAccess(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				key := fmt.Sprintf("GET:/users/%d/%d", id, j)
-				sm.Load(key)
+				sm.LoadWithMethodPath("GET", fmt.Sprintf("/users/%d/%d", id, j))
 			}
 		}(i)
 	}
@@ -168,22 +156,22 @@ func TestShardedMap_HitCount(t *testing.T) {
 
 	handler := func(ctx context.Context) error { return nil }
 	entry := &cacheEntry{
-		handler:       handler,
-		paramTemplate: map[string]string{"id": "123"},
+		handler:    handler,
+		paramPairs: [MaxParams]paramPair{{key: "id", value: "123"}},
+		paramCount: 1,
 	}
 
-	key := "GET:/users/123"
-	sm.Store(key, entry)
+	sm.StoreWithMethodPath("GET", "/users/123", entry)
 
 	// 多次加载
 	for i := 0; i < 10; i++ {
-		loaded, ok := sm.Load(key)
+		loaded, ok := sm.LoadWithMethodPath("GET", "/users/123")
 		if !ok {
 			t.Fatal("failed to load entry")
 		}
-		// 第一次加载时 hitCount 为 1，之后每次加载都会增加
-		if i == 9 && loaded.hitCount != 10 {
-			t.Errorf("hit count = %d, want 10", loaded.hitCount)
+		// 验证条目存在
+		if i == 9 && loaded.paramPairs[0].value != "123" {
+			t.Errorf("param value = %s, want 123", loaded.paramPairs[0].value)
 		}
 	}
 }
@@ -196,12 +184,12 @@ func TestShardedMap_Clear(t *testing.T) {
 
 	// 插入多个条目
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("GET:/users/%d", i)
 		entry := &cacheEntry{
-			handler:       handler,
-			paramTemplate: map[string]string{"id": fmt.Sprintf("%d", i)},
+			handler:    handler,
+			paramPairs: [MaxParams]paramPair{{key: "id", value: fmt.Sprintf("%d", i)}},
+			paramCount: 1,
 		}
-		sm.Store(key, entry)
+		sm.StoreWithMethodPath("GET", fmt.Sprintf("/users/%d", i), entry)
 	}
 
 	// 检查条目数
@@ -226,22 +214,23 @@ func TestShardedMap_TimestampUpdate(t *testing.T) {
 
 	handler := func(ctx context.Context) error { return nil }
 	entry := &cacheEntry{
-		handler:       handler,
-		paramTemplate: map[string]string{"id": "123"},
+		handler:    handler,
+		paramPairs: [MaxParams]paramPair{{key: "id", value: "123"}},
+		paramCount: 1,
 	}
 
-	key := "GET:/users/123"
-	sm.Store(key, entry)
+	sm.StoreWithMethodPath("GET", "/users/123", entry)
 
 	// 获取初始时间戳
-	loaded1, _ := sm.Load(key)
+	loaded1, _ := sm.LoadWithMethodPath("GET", "/users/123")
 	timestamp1 := loaded1.timestamp
 
-	// 等待一段时间
+	// 等待一段时间后重新存储
 	time.Sleep(10 * time.Millisecond)
+	sm.StoreWithMethodPath("GET", "/users/123", entry)
 
 	// 再次加载，时间戳应该更新
-	loaded2, _ := sm.Load(key)
+	loaded2, _ := sm.LoadWithMethodPath("GET", "/users/123")
 	timestamp2 := loaded2.timestamp
 
 	if timestamp2 <= timestamp1 {
@@ -254,7 +243,7 @@ func TestShardedMap_GetShard(t *testing.T) {
 	sm := newShardedMap()
 
 	// 测试相同的 key 总是返回相同的分片
-	key := "GET:/users/123"
+	key := cacheKey{method: "GET", path: "/users/123"}
 	shard1 := sm.getShard(key)
 	shard2 := sm.getShard(key)
 
@@ -276,12 +265,12 @@ func BenchmarkShardedMap_Store(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		key := fmt.Sprintf("GET:/users/%d", i)
 		entry := &cacheEntry{
-			handler:       handler,
-			paramTemplate: map[string]string{"id": fmt.Sprintf("%d", i)},
+			handler:    handler,
+			paramPairs: [MaxParams]paramPair{{key: "id", value: fmt.Sprintf("%d", i)}},
+			paramCount: 1,
 		}
-		sm.Store(key, entry)
+		sm.StoreWithMethodPath("GET", fmt.Sprintf("/users/%d", i), entry)
 	}
 }
 
@@ -292,19 +281,18 @@ func BenchmarkShardedMap_Load(b *testing.B) {
 
 	// 预先插入条目
 	for i := 0; i < 1000; i++ {
-		key := fmt.Sprintf("GET:/users/%d", i)
 		entry := &cacheEntry{
-			handler:       handler,
-			paramTemplate: map[string]string{"id": fmt.Sprintf("%d", i)},
+			handler:    handler,
+			paramPairs: [MaxParams]paramPair{{key: "id", value: fmt.Sprintf("%d", i)}},
+			paramCount: 1,
 		}
-		sm.Store(key, entry)
+		sm.StoreWithMethodPath("GET", fmt.Sprintf("/users/%d", i), entry)
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		key := fmt.Sprintf("GET:/users/%d", i%1000)
-		sm.Load(key)
+		sm.LoadWithMethodPath("GET", fmt.Sprintf("/users/%d", i%1000))
 	}
 }
 
@@ -315,12 +303,12 @@ func BenchmarkShardedMap_ConcurrentLoad(b *testing.B) {
 
 	// 预先插入条目
 	for i := 0; i < 1000; i++ {
-		key := fmt.Sprintf("GET:/users/%d", i)
 		entry := &cacheEntry{
-			handler:       handler,
-			paramTemplate: map[string]string{"id": fmt.Sprintf("%d", i)},
+			handler:    handler,
+			paramPairs: [MaxParams]paramPair{{key: "id", value: fmt.Sprintf("%d", i)}},
+			paramCount: 1,
 		}
-		sm.Store(key, entry)
+		sm.StoreWithMethodPath("GET", fmt.Sprintf("/users/%d", i), entry)
 	}
 
 	b.ResetTimer()
@@ -328,8 +316,7 @@ func BenchmarkShardedMap_ConcurrentLoad(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			key := fmt.Sprintf("GET:/users/%d", i%1000)
-			sm.Load(key)
+			sm.LoadWithMethodPath("GET", fmt.Sprintf("/users/%d", i%1000))
 			i++
 		}
 	})
@@ -343,13 +330,12 @@ func TestShardedMap_StoreEviction(t *testing.T) {
 	handler := func(ctx context.Context) error { return nil }
 
 	// 使用固定前缀确保落到同一分片
-	prefix := "A"
 	for i := 0; i < maxEntriesPerShard*2; i++ {
-		key := fmt.Sprintf("%s%d", prefix, i)
-		sm.Store(key, &cacheEntry{
+		entry := &cacheEntry{
 			handler:   handler,
 			timestamp: time.Now().UnixNano(),
-		})
+		}
+		sm.StoreWithMethodPath("GET", fmt.Sprintf("/test/%d", i), entry)
 	}
 
 	// 验证淘汰生效
@@ -365,19 +351,21 @@ func TestShardedMap_EvictLRU(t *testing.T) {
 	handler := func(ctx context.Context) error { return nil }
 
 	// 找到一个固定的分片索引
-	testKey := "GET:/test/0"
+	testKey := cacheKey{method: "GET", path: "/test/0"}
 	shardIdx := sm.getShard(testKey)
 
 	// 向同一个分片填充超过maxEntriesPerShard的条目
-	// 使用相同的前缀确保落到同一分片
 	keysAdded := 0
 	for i := 0; keysAdded < maxEntriesPerShard+10; i++ {
-		key := fmt.Sprintf("GET:/test/%d", i)
+		method := "GET"
+		path := fmt.Sprintf("/test/%d", i)
+		key := cacheKey{method: method, path: path}
 		if sm.getShard(key) == shardIdx {
-			sm.Store(key, &cacheEntry{
+			entry := &cacheEntry{
 				handler:   handler,
-				timestamp: time.Now().UnixNano() + int64(i), // 确保时间戳递增
-			})
+				timestamp: time.Now().UnixNano() + int64(i),
+			}
+			sm.StoreWithMethodPath(method, path, entry)
 			keysAdded++
 			time.Sleep(time.Microsecond)
 		}

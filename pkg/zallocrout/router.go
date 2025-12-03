@@ -11,23 +11,27 @@ const hotCacheThreshold = 100
 
 // 路由器核心结构
 type Router struct {
-	roots          map[string]*RouteNode // HTTP 方法分层（GET/POST 等）
-	rootsMu        sync.RWMutex          // 根节点读写锁
-	resourceMgr    *resourceManager      // 资源管理器
-	hotCache       *shardedMap           // 分片热点缓存
-	metrics        *RouterMetrics        // 性能指标
-	enableHotCache uint32                // 是否启用热点缓存（原子操作）
+	roots            map[string]*RouteNode  // HTTP 方法分层（GET/POST 等）
+	rootsMu          sync.RWMutex           // 根节点读写锁
+	resourceMgr      *resourceManager       // 资源管理器
+	hotCache         *shardedMap            // 分片热点缓存
+	metrics          *RouterMetrics         // 性能指标
+	metricsCollector *asyncMetricsCollector // 异步 metrics 收集器
+	enableHotCache   uint32                 // 是否启用热点缓存（原子操作）
 }
 
 // 创建新的路由器
 func NewRouter() *Router {
-	return &Router{
-		roots:          make(map[string]*RouteNode, 8),
-		resourceMgr:    globalResourceManager,
-		hotCache:       newShardedMap(),
-		metrics:        &RouterMetrics{},
-		enableHotCache: 1, // 默认启用
+	metrics := &RouterMetrics{}
+	r := &Router{
+		roots:            make(map[string]*RouteNode, 8),
+		resourceMgr:      globalResourceManager,
+		hotCache:         newShardedMap(),
+		metrics:          metrics,
+		metricsCollector: newAsyncMetricsCollector(metrics),
+		enableHotCache:   1, // 默认启用
 	}
+	return r
 }
 
 // 添加路由
@@ -90,21 +94,26 @@ func (r *Router) AddRoute(method, path string, handler HandlerFunc, middlewares 
 
 		// 参数路由
 		if isParamSeg(seg) {
-			// 加锁检查和插入
+			// 使用原子指针检查和插入
+			if child := current.paramChild.Load(); child != nil {
+				current = child
+				continue
+			}
+
+			// 加锁创建新的参数节点
 			current.mu.Lock()
-			if current.paramChild != nil {
-				child := current.paramChild
+			// 双重检查
+			if child := current.paramChild.Load(); child != nil {
 				current.mu.Unlock()
 				current = child
 				continue
 			}
 
-			// 创建新的参数节点
 			child := r.resourceMgr.acquireNode()
 			child.typ = ParamNode
 			child.seg = []byte(seg)
 			child.paramName = []byte(seg[1:]) // 去掉 ':'
-			current.paramChild = child
+			current.paramChild.Store(child)
 			current.mu.Unlock()
 			current = child
 			continue
@@ -112,21 +121,26 @@ func (r *Router) AddRoute(method, path string, handler HandlerFunc, middlewares 
 
 		// 通配符路由
 		if isWildcardSeg(seg) {
-			// 加锁检查和插入
+			// 使用原子指针检查和插入
+			if child := current.wildcardChild.Load(); child != nil {
+				current = child
+				break
+			}
+
+			// 加锁创建新的通配符节点
 			current.mu.Lock()
-			if current.wildcardChild != nil {
-				child := current.wildcardChild
+			// 双重检查
+			if child := current.wildcardChild.Load(); child != nil {
 				current.mu.Unlock()
 				current = child
 				break
 			}
 
-			// 创建新的通配符节点
 			child := r.resourceMgr.acquireNode()
 			child.typ = WildcardNode
 			child.seg = []byte(seg)
 			child.isWildcard = true
-			current.wildcardChild = child
+			current.wildcardChild.Store(child)
 			current.mu.Unlock()
 			current = child
 			break
@@ -156,35 +170,20 @@ func (r *Router) AddRoute(method, path string, handler HandlerFunc, middlewares 
 //
 //go:inline
 func (r *Router) Match(method, path string, parent context.Context) (context.Context, HandlerFunc, []Middleware, bool) {
-	r.metrics.IncrementTotalMatches()
-
 	// 1. 热点缓存检查（如果启用）
 	if atomic.LoadUint32(&r.enableHotCache) == 1 {
-		cacheKey := method + path
-		if cacheVal, ok := r.hotCache.Load(cacheKey); ok {
-			r.metrics.IncrementCacheHits()
+		// 直接使用 method 和 path 计算哈希，避免字符串拼接
+		if cacheVal, ok := r.hotCache.LoadWithMethodPath(method, path); ok {
+			r.metricsCollector.incrementCacheHits()
 
-			// 构建参数数组（优化：预先检查是否有参数）
-			var paramPairs [MaxParams]paramPair
-			paramCount := len(cacheVal.paramTemplate)
-			if paramCount > 0 {
-				i := 0
-				for k, v := range cacheVal.paramTemplate {
-					if i < MaxParams {
-						paramPairs[i] = paramPair{key: k, value: v}
-						i++
-					}
-				}
-			}
-
-			// 从池中获取 context（使用指针避免数组拷贝）
-			ctx := acquireContext(parent, &paramPairs, paramCount)
+			// 直接使用缓存的参数数组，避免 map 迭代
+			ctx := acquireContext(parent, &cacheVal.paramPairs, cacheVal.paramCount)
 			return ctx, cacheVal.handler, cacheVal.middlewares, true
 		}
-		r.metrics.IncrementCacheMisses()
+		r.metricsCollector.incrementCacheMisses()
 	}
 
-	// 2. 路径规范化（零分配优化：大多数路径不需要规范化）
+	// 2. 路径规范化
 	normalizedPath := path
 	if needsNormalization(path) {
 		pathBytes := []byte(path)
@@ -258,7 +257,10 @@ func (r *Router) Match(method, path string, parent context.Context) (context.Con
 		return nil, nil, nil, false
 	}
 
-	// 7. 使用路由定义的参数名称重新映射参数
+	// 7. 记录总匹配次数
+	r.metricsCollector.incrementTotalMatches()
+
+	// 8. 使用路由定义的参数名称重新映射参数
 	// 如果路由有自己的参数名称列表，使用它；否则使用遍历时收集的名称
 	if len(routeParamNames) > 0 && len(routeParamNames) == paramCount {
 		// 重新映射参数名称（使用 unsafeString 避免内存分配）
@@ -267,33 +269,29 @@ func (r *Router) Match(method, path string, parent context.Context) (context.Con
 		}
 	}
 
-	// 8. 热点缓存更新（原子操作 + 分片 Map）
+	// 9. 热点缓存更新（原子操作 + 分片 Map）
 	if atomic.LoadUint32(&r.enableHotCache) == 1 && !current.isWildcard {
 		hitCount := current.incrementHitCount()
 		if hitCount > hotCacheThreshold {
-			cacheKey := method + path
+			// 直接存储参数数组，避免 map 分配和迭代
 			cacheData := &cacheEntry{
 				handler:     handler,
 				middlewares: middlewares,
+				paramPairs:  paramPairs,
+				paramCount:  paramCount,
 			}
-			// 缓存参数模板（如果有参数）
-			if paramCount > 0 {
-				cacheData.paramTemplate = make(map[string]string, paramCount)
-				for i := 0; i < paramCount; i++ {
-					cacheData.paramTemplate[paramPairs[i].key] = paramPairs[i].value
-				}
-			}
-			r.hotCache.Store(cacheKey, cacheData)
+			r.hotCache.StoreWithMethodPath(method, path, cacheData)
 		}
 	}
 
-	// 9. 从池中获取 context 并返回（使用指针避免数组拷贝）
+	// 10. 从池中获取 context 并返回（使用指针避免数组拷贝）
 	ctx := acquireContext(parent, &paramPairs, paramCount)
 	return ctx, handler, middlewares, true
 }
 
-// 获取性能指标
+// 获取性能指标（自动刷新本地计数器）
 func (r *Router) Metrics() RouterMetrics {
+	r.metricsCollector.flush()
 	return r.metrics.Snapshot()
 }
 
@@ -302,8 +300,9 @@ func (r *Router) ResetMetrics() {
 	r.metrics.Reset()
 }
 
-// 获取缓存命中率
+// 获取缓存命中率（自动刷新本地计数器）
 func (r *Router) CacheHitRate() float64 {
+	r.metricsCollector.flush()
 	return r.metrics.CacheHitRate()
 }
 
@@ -325,4 +324,19 @@ func (r *Router) ClearHotCache() {
 // 获取缓存统计信息
 func (r *Router) CacheStats() (totalEntries int64, shardDistribution [shardCount]int64) {
 	return r.hotCache.Stats()
+}
+
+// 启用 Metrics 收集
+func (r *Router) EnableMetrics() {
+	r.metricsCollector.enable()
+}
+
+// 禁用 Metrics 收集（用于极致性能场景）
+func (r *Router) DisableMetrics() {
+	r.metricsCollector.disable()
+}
+
+// 手动刷新 Metrics（将本地计数器聚合到全局）
+func (r *Router) FlushMetrics() {
+	r.metricsCollector.flush()
 }

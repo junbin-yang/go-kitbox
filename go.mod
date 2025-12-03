@@ -3,6 +3,7 @@ module github.com/junbin-yang/go-kitbox
 go 1.24.0
 
 require (
+	github.com/dgryski/go-wyhash v0.0.0-20191203203029-c4841ae36371
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	go.uber.org/zap v1.27.1

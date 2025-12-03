@@ -21,20 +21,20 @@ type HandlerFunc func(context.Context) error
 // 中间件类型
 type Middleware func(HandlerFunc) HandlerFunc
 
-// 路由节点（内存对齐优化）
+// 路由节点（内存对齐）
 // 将高频访问字段放在结构体前部，确保在同一个 CPU 缓存行
 type RouteNode struct {
 	// 无锁静态匹配部分（只读，无需锁）
 	staticChildren map[string]*RouteNode // 静态子节点哈希表（O(1)查找）
 	seg            []byte                // 路径片段（字节切片）
+	paramChild     atomic.Pointer[RouteNode] // 参数子节点（原子指针，无锁）
+	wildcardChild  atomic.Pointer[RouteNode] // 通配符子节点（原子指针，无锁）
 
 	// 动态匹配部分（需锁）
 	mu            sync.RWMutex // 节点级锁
 	typ           NodeType     // 节点类型
 	handler       HandlerFunc  // 处理函数
 	middlewares   []Middleware // 预编译中间件链
-	paramChild    *RouteNode // 参数子节点（单例）
-	wildcardChild *RouteNode // 通配符子节点（单例）
 	paramName     []byte     // 参数名称（如 :id → "id"）
 	paramNames    [][]byte   // 此路由的参数名称列表（按顺序，字节切片避免转换开销）
 
@@ -61,9 +61,9 @@ func (n *RouteNode) insertChild(seg string, child *RouteNode) {
 	case StaticCompressed:
 		n.staticChildren[seg] = child
 	case ParamNode:
-		n.paramChild = child
+		n.paramChild.Store(child)
 	case WildcardNode:
-		n.wildcardChild = child
+		n.wildcardChild.Store(child)
 	}
 }
 
@@ -74,18 +74,14 @@ func (n *RouteNode) findStaticChild(seg string) (*RouteNode, bool) {
 	return child, ok
 }
 
-// 查找参数子节点
+// 查找参数子节点（无锁原子操作）
 func (n *RouteNode) findParamChild() *RouteNode {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	return n.paramChild
+	return n.paramChild.Load()
 }
 
-// 查找通配符子节点
+// 查找通配符子节点（无锁原子操作）
 func (n *RouteNode) findWildcardChild() *RouteNode {
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	return n.wildcardChild
+	return n.wildcardChild.Load()
 }
 
 // 设置处理器和中间件
