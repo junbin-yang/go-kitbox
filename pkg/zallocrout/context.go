@@ -27,7 +27,11 @@ type routeContext struct {
 // globalContextPool Context 池（仅池化 context 结构本身）
 var globalContextPool = sync.Pool{
 	New: func() interface{} {
-		return &routeContext{}
+		ctx := &routeContext{}
+		// 预分配容量，避免后续扩容
+		ctx.paramCount = 0
+		ctx.valueCount = 0
+		return ctx
 	},
 }
 
@@ -35,12 +39,12 @@ var globalContextPool = sync.Pool{
 func acquireContext(parent context.Context, paramPairs *[MaxParams]paramPair, paramCount int) *routeContext {
 	ctx := globalContextPool.Get().(*routeContext)
 	ctx.Context = parent
-	// 从源数组复制参数（避免指针逃逸导致堆分配）
-	for i := 0; i < paramCount; i++ {
-		ctx.paramPairs[i] = paramPairs[i]
-	}
 	ctx.paramCount = paramCount
 	ctx.valueCount = 0
+	// 从源数组复制参数（避免指针逃逸导致堆分配）
+	if paramCount > 0 {
+		copy(ctx.paramPairs[:paramCount], paramPairs[:paramCount])
+	}
 	return ctx
 }
 
@@ -48,10 +52,13 @@ func acquireContext(parent context.Context, paramPairs *[MaxParams]paramPair, pa
 func releaseContext(ctx *routeContext) {
 	ctx.Context = nil
 	ctx.paramCount = 0
-	for i := 0; i < ctx.valueCount; i++ {
-		ctx.valuePairs[i] = valuePair{}
+	// 清空但保留底层数组容量
+	if ctx.valueCount > 0 {
+		for i := 0; i < ctx.valueCount; i++ {
+			ctx.valuePairs[i] = valuePair{}
+		}
+		ctx.valueCount = 0
 	}
-	ctx.valueCount = 0
 	globalContextPool.Put(ctx)
 }
 

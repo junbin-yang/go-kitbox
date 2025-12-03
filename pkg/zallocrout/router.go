@@ -160,17 +160,20 @@ func (r *Router) Match(method, path string, parent context.Context) (context.Con
 
 	// 1. 热点缓存检查（如果启用）
 	if atomic.LoadUint32(&r.enableHotCache) == 1 {
-		cacheKey := method + ":" + path
+		cacheKey := method + path
 		if cacheVal, ok := r.hotCache.Load(cacheKey); ok {
 			r.metrics.IncrementCacheHits()
 
-			// 构建参数数组
+			// 构建参数数组（优化：预先检查是否有参数）
 			var paramPairs [MaxParams]paramPair
-			paramCount := 0
-			for k, v := range cacheVal.paramTemplate {
-				if paramCount < MaxParams {
-					paramPairs[paramCount] = paramPair{key: k, value: v}
-					paramCount++
+			paramCount := len(cacheVal.paramTemplate)
+			if paramCount > 0 {
+				i := 0
+				for k, v := range cacheVal.paramTemplate {
+					if i < MaxParams {
+						paramPairs[i] = paramPair{key: k, value: v}
+						i++
+					}
 				}
 			}
 
@@ -268,7 +271,7 @@ func (r *Router) Match(method, path string, parent context.Context) (context.Con
 	if atomic.LoadUint32(&r.enableHotCache) == 1 && !current.isWildcard {
 		hitCount := current.incrementHitCount()
 		if hitCount > hotCacheThreshold {
-			cacheKey := method + ":" + path
+			cacheKey := method + path
 			cacheData := &cacheEntry{
 				handler:     handler,
 				middlewares: middlewares,

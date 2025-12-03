@@ -1,7 +1,7 @@
 package zallocrout
 
 import (
-	"hash/fnv"
+	"hash/maphash"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,18 +27,20 @@ type cacheEntry struct {
 type shardedMap struct {
 	shards     [shardCount]sync.Map // 16 个分片
 	entryCount [shardCount]int64    // 每个分片的条目数
+	seed       maphash.Seed         // 哈希种子
 }
 
 // 创建分片缓存
 func newShardedMap() *shardedMap {
-	return &shardedMap{}
+	return &shardedMap{
+		seed: maphash.MakeSeed(),
+	}
 }
 
-// 计算分片索引（使用 FNV-1a 哈希）
+// 计算分片索引（使用 maphash 替代 FNV）
 func (sm *shardedMap) getShard(key string) int {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	return int(h.Sum32() % shardCount)
+	h := maphash.String(sm.seed, key)
+	return int(h % shardCount)
 }
 
 // 加载缓存条目
@@ -50,9 +52,8 @@ func (sm *shardedMap) Load(key string) (*cacheEntry, bool) {
 	}
 
 	entry := val.(*cacheEntry)
-	// 更新命中次数和时间戳
+	// 只更新命中次数，减少时间戳更新开销
 	atomic.AddUint64(&entry.hitCount, 1)
-	atomic.StoreInt64(&entry.timestamp, time.Now().UnixNano())
 
 	return entry, true
 }
