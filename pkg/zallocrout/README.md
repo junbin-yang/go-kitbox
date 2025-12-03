@@ -590,7 +590,7 @@ BenchmarkZallocrout_GithubAll-16    	  374456	      9719 ns/op	       0 B/op	   
 | Echo           | 15,433 ns    | 15,487 ns     | 15,487 ns    | < 1%        |
 | HttpRouter     | 17,647 ns    | 15,693 ns     | 16,094 ns    | 11%         |
 
-**关键发现**：
+**并发总结**：
 
 -   🎯 **Zallocrout 并发扩展性优秀**：在 1-16 CPU 下性能波动 < 2%，无锁设计效果显著
 -   ⚠️ **Gin 高并发性能问题**：在 8 CPU 时 GithubAll 性能下降 **2 倍**（14,959ns → 31,111ns）
@@ -601,36 +601,30 @@ BenchmarkZallocrout_GithubAll-16    	  374456	      9719 ns/op	       0 B/op	   
 
 ### 内部基准测试
 
-内部组件性能测试结果（Intel i7-4770 @ 3.40GHz）：
+内部组件性能测试结果（Intel i7-12700 @ 3.30GHz）：
 
 ```
-路由匹配（零分配）：
-BenchmarkRouter_MatchStatic-8           23768023    155.9 ns/op    0 B/op    0 allocs/op
-BenchmarkRouter_MatchParam-8            18532712    197.4 ns/op    0 B/op    0 allocs/op
-BenchmarkRouter_MatchParamNoCache-8     20795749    164.4 ns/op    0 B/op    0 allocs/op
-BenchmarkRouter_MatchWildcard-8         13538740    265.8 ns/op    0 B/op    0 allocs/op
-BenchmarkRouter_MatchCacheHit-8         18682422    190.7 ns/op    0 B/op    0 allocs/op
-
 Context 操作（零分配）：
-BenchmarkRouteContext_GetParam-8       942756850     3.839 ns/op    0 B/op    0 allocs/op
-BenchmarkRouteContext_SetValue-8       151526407    25.96 ns/op    0 B/op    0 allocs/op
-BenchmarkRouteContext_Value-8          542621894     6.452 ns/op    0 B/op    0 allocs/op
-BenchmarkContextPool-8                 177534516    20.21 ns/op    0 B/op    0 allocs/op
-BenchmarkContextPool_Parallel-8        619946894     5.845 ns/op    0 B/op    0 allocs/op
+BenchmarkRouteContext_GetParam-8       764767176     1.562 ns/op    0 B/op    0 allocs/op
+BenchmarkRouteContext_SetValue-8        96654154    12.67 ns/op    0 B/op    0 allocs/op
+BenchmarkRouteContext_Value-8          517993138     2.333 ns/op    0 B/op    0 allocs/op
+BenchmarkContextPool-8                 100000000    11.37 ns/op    0 B/op    0 allocs/op
+BenchmarkContextPool_Parallel-8        582329784     1.948 ns/op    0 B/op    0 allocs/op
 
 核心组件（零分配）：
-BenchmarkRouteNode_FindStaticChild-8   338678972    10.74 ns/op    0 B/op    0 allocs/op
-BenchmarkNormalizePathBytes-8           71235076    49.96 ns/op    0 B/op    0 allocs/op
-BenchmarkSplitPathToCompressedSegs-8   100000000    32.29 ns/op    0 B/op    0 allocs/op
-BenchmarkUnsafeString-8               1000000000     0.5124 ns/op  0 B/op    0 allocs/op
+BenchmarkRouteNode_FindStaticChild-8   211180455     5.712 ns/op    0 B/op    0 allocs/op
+BenchmarkRouteNode_FindParamChild-8   1000000000     0.2415 ns/op   0 B/op    0 allocs/op
+BenchmarkNormalizePathBytes-8           37844979    33.18 ns/op    0 B/op    0 allocs/op
+BenchmarkSplitPathToCompressedSegs-8    47397669    23.13 ns/op    0 B/op    0 allocs/op
+BenchmarkUnsafeString-8               1000000000     0.2960 ns/op   0 B/op    0 allocs/op
 ```
 
 **性能说明**：
 
--   ✅ **零分配保证**：所有路由匹配和 Context 操作均为 0 allocs/op
--   ✅ **亚微秒延迟**：静态路由匹配 ~156 ns/op，参数路由 ~197 ns/op
--   ✅ **高并发性能**：并行 Context 池化操作仅 5.8 ns/op
--   ✅ **极速参数访问**：GetParam 仅需 3.8 ns/op
+-   ✅ **零分配保证**：所有核心操作均为 0 allocs/op
+-   ✅ **极速参数访问**：GetParam 仅需 1.56 ns/op
+-   ✅ **高并发性能**：并行 Context 池化操作仅 1.95 ns/op
+-   ✅ **无锁查找**：静态子节点查找 5.71 ns/op，参数子节点查找 0.24 ns/op
 
 ## 实现细节
 

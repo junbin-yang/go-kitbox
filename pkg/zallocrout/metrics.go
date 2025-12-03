@@ -20,14 +20,14 @@ type localCounter struct {
 	cacheHits    uint64
 	cacheMisses  uint64
 	totalMatches uint64
-	_padding     [40]byte // 缓存行填充，避免伪共享
+	_padding     [40]byte //nolint:unused // 缓存行填充，避免伪共享，非业务字段
 }
 
 // 异步 Metrics 收集器
 type asyncMetricsCollector struct {
-	global   *RouterMetrics
-	local    [16]localCounter // 16 个本地计数器，减少竞争
-	enabled  uint32           // 是否启用（原子操作）
+	global  *RouterMetrics
+	local   [16]localCounter // 16 个本地计数器，减少竞争
+	enabled uint32           // 是否启用（原子操作）
 }
 
 // 创建异步 metrics 收集器

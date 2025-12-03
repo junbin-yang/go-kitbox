@@ -21,7 +21,6 @@ type cacheEntry struct {
 	paramPairs  [MaxParams]paramPair // 参数数组
 	paramCount  int                  // 参数数量
 	timestamp   int64                // 时间戳（LRU 淘汰用）
-	hitCount    uint64               // 命中次数
 }
 
 // 复合缓存键
