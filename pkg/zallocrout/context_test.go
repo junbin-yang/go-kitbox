@@ -14,7 +14,7 @@ const (
 	testRouteKey  testContextKey = "route_key"
 )
 
-// TestRouteContext_GetParam tests the GetParam method
+// TestRouteContext_GetParam 测试 GetParam 方法
 func TestRouteContext_GetParam(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -25,7 +25,7 @@ func TestRouteContext_GetParam(t *testing.T) {
 	ctx := acquireContext(parent, &paramPairs, paramCount)
 	defer releaseContext(ctx)
 
-	// Test existing param
+	// 测试已存在的参数
 	val, ok := ctx.GetParam("id")
 	if !ok || val != "123" {
 		t.Errorf("GetParam(id) = %v, %v; want 123, true", val, ok)
@@ -36,21 +36,21 @@ func TestRouteContext_GetParam(t *testing.T) {
 		t.Errorf("GetParam(name) = %v, %v; want test, true", val, ok)
 	}
 
-	// Test non-existing param
+	// 测试不存在的参数
 	val, ok = ctx.GetParam("nonexistent")
 	if ok || val != "" {
 		t.Errorf("GetParam(nonexistent) = %v, %v; want '', false", val, ok)
 	}
 }
 
-// TestRouteContext_SetValue tests the SetValue method
+// TestRouteContext_SetValue 测试 SetValue 方法
 func TestRouteContext_SetValue(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
 	defer releaseContext(ctx)
 
-	// Test setting values
+	// 测试设置值
 	ok := ctx.SetValue("key1", "value1")
 	if !ok {
 		t.Error("SetValue(key1) failed")
@@ -61,7 +61,7 @@ func TestRouteContext_SetValue(t *testing.T) {
 		t.Error("SetValue(key2) failed")
 	}
 
-	// Test retrieving values
+	// 测试读取值
 	val, ok := ctx.GetValue("key1")
 	if !ok || val != "value1" {
 		t.Errorf("GetValue(key1) = %v, %v; want value1, true", val, ok)
@@ -72,21 +72,21 @@ func TestRouteContext_SetValue(t *testing.T) {
 		t.Errorf("GetValue(key2) = %v, %v; want 42, true", val, ok)
 	}
 
-	// Test non-existing value
+	// 测试不存在的值
 	val, ok = ctx.GetValue("nonexistent")
 	if ok || val != nil {
 		t.Errorf("GetValue(nonexistent) = %v, %v; want nil, false", val, ok)
 	}
 }
 
-// TestRouteContext_SetValue_MaxValues tests the MaxValues limit
+// TestRouteContext_SetValue_MaxValues 测试 MaxValues 限制
 func TestRouteContext_SetValue_MaxValues(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
 	defer releaseContext(ctx)
 
-	// Fill up to MaxValues
+	// 填充到 MaxValues
 	for i := 0; i < MaxValues; i++ {
 		ok := ctx.SetValue("key", i)
 		if !ok {
@@ -94,51 +94,51 @@ func TestRouteContext_SetValue_MaxValues(t *testing.T) {
 		}
 	}
 
-	// Try to exceed MaxValues
+	// 尝试超过 MaxValues
 	ok := ctx.SetValue("overflow", "value")
 	if ok {
 		t.Error("SetValue should fail when MaxValues is exceeded")
 	}
 }
 
-// TestRouteContext_Value tests the Value method (context.Context interface)
+// TestRouteContext_Value 测试 Value 方法（context.Context 接口）
 func TestRouteContext_Value(t *testing.T) {
 	parent := context.WithValue(context.Background(), testParentKey, "parent_value")
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
 	defer releaseContext(ctx)
 
-	// Set a value in routeContext
-	ctx.SetValue(testRouteKey, "route_value")
+	// 在 routeContext 中设置值
+	ctx.SetValue(string(testRouteKey), "route_value")
 
-	// Test retrieving routeContext value via Value method
-	val := ctx.Value(testRouteKey)
+	// 测试通过 Value 方法获取 routeContext 值
+	val := ctx.Value(string(testRouteKey))
 	if val != "route_value" {
 		t.Errorf("Value(route_key) = %v; want route_value", val)
 	}
 
-	// Test retrieving parent context value
+	// 测试获取父 context 值
 	val = ctx.Value(testParentKey)
 	if val != "parent_value" {
 		t.Errorf("Value(parent_key) = %v; want parent_value", val)
 	}
 
-	// Test non-existing value
+	// 测试不存在的值
 	val = ctx.Value(testContextKey("nonexistent"))
 	if val != nil {
 		t.Errorf("Value(nonexistent) = %v; want nil", val)
 	}
 
-	// Test non-string key
+	// 测试非字符串键
 	val = ctx.Value(123)
 	if val != nil {
 		t.Errorf("Value(123) = %v; want nil", val)
 	}
 }
 
-// TestRouteContext_Deadline tests the Deadline method
+// TestRouteContext_Deadline 测试 Deadline 方法
 func TestRouteContext_Deadline(t *testing.T) {
-	// Test with parent that has no deadline
+	// 测试没有 deadline 的父 context
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
@@ -149,7 +149,7 @@ func TestRouteContext_Deadline(t *testing.T) {
 		t.Errorf("Deadline() = %v, %v; want zero, false", deadline, ok)
 	}
 
-	// Test with parent that has deadline
+	// 测试有 deadline 的父 context
 	expectedDeadline := time.Now().Add(time.Hour)
 	parentWithDeadline, cancel := context.WithDeadline(context.Background(), expectedDeadline)
 	defer cancel()
@@ -166,9 +166,9 @@ func TestRouteContext_Deadline(t *testing.T) {
 	}
 }
 
-// TestRouteContext_Done tests the Done method
+// TestRouteContext_Done 测试 Done 方法
 func TestRouteContext_Done(t *testing.T) {
-	// Test with parent that is not cancellable
+	// 测试不可取消的父 context
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
@@ -179,7 +179,7 @@ func TestRouteContext_Done(t *testing.T) {
 		t.Error("Done() should return nil for non-cancellable context")
 	}
 
-	// Test with cancellable parent
+	// 测试可取消的父 context
 	parentCtx, cancel := context.WithCancel(context.Background())
 	ctx2 := acquireContext(parentCtx, &paramPairs, 0)
 	defer releaseContext(ctx2)
@@ -189,19 +189,19 @@ func TestRouteContext_Done(t *testing.T) {
 		t.Error("Done() should return channel for cancellable context")
 	}
 
-	// Cancel and verify
+	// 取消并验证
 	cancel()
 	select {
 	case <-done:
-		// Expected
+		// 符合预期
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Done() channel should be closed after cancel")
 	}
 }
 
-// TestRouteContext_Err tests the Err method
+// TestRouteContext_Err 测试 Err 方法
 func TestRouteContext_Err(t *testing.T) {
-	// Test with non-cancelled context
+	// 测试未取消的 context
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
@@ -212,7 +212,7 @@ func TestRouteContext_Err(t *testing.T) {
 		t.Errorf("Err() = %v; want nil", err)
 	}
 
-	// Test with cancelled context
+	// 测试已取消的 context
 	parentCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -225,7 +225,7 @@ func TestRouteContext_Err(t *testing.T) {
 	}
 }
 
-// TestGetParam tests the global GetParam helper function
+// TestGetParam 测试全局 GetParam 辅助函数
 func TestGetParam(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -235,27 +235,27 @@ func TestGetParam(t *testing.T) {
 	ctx := acquireContext(parent, &paramPairs, paramCount)
 	defer releaseContext(ctx)
 
-	// Test with routeContext
+	// 测试 routeContext
 	val, ok := GetParam(ctx, "id")
 	if !ok || val != "456" {
 		t.Errorf("GetParam(id) = %v, %v; want 456, true", val, ok)
 	}
 
-	// Test with non-routeContext
+	// 测试非 routeContext
 	val, ok = GetParam(context.Background(), "id")
 	if ok || val != "" {
 		t.Errorf("GetParam on non-routeContext = %v, %v; want '', false", val, ok)
 	}
 }
 
-// TestSetValue tests the global SetValue helper function
+// TestSetValue 测试全局 SetValue 辅助函数
 func TestSetValue(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
 	defer releaseContext(ctx)
 
-	// Test with routeContext
+	// 测试 routeContext
 	ok := SetValue(ctx, "key", "value")
 	if !ok {
 		t.Error("SetValue should succeed on routeContext")
@@ -264,14 +264,14 @@ func TestSetValue(t *testing.T) {
 	val, _ := GetParam(ctx, "key")
 	_ = val
 
-	// Test with non-routeContext
+	// 测试非 routeContext
 	ok = SetValue(context.Background(), "key", "value")
 	if ok {
 		t.Error("SetValue should fail on non-routeContext")
 	}
 }
 
-// TestReleaseContext tests the global ReleaseContext helper function
+// TestReleaseContext 测试全局 ReleaseContext 辅助函数
 func TestReleaseContext(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -280,10 +280,10 @@ func TestReleaseContext(t *testing.T) {
 
 	ctx.SetValue("key", "value")
 
-	// Release context
+	// 释放 context
 	ReleaseContext(ctx)
 
-	// Verify context is reset
+	// 验证 context 已重置
 	if ctx.Context != nil {
 		t.Error("Context should be nil after release")
 	}
@@ -294,17 +294,17 @@ func TestReleaseContext(t *testing.T) {
 		t.Error("valueCount should be 0 after release")
 	}
 
-	// Test with non-routeContext (should not panic)
+	// 测试非 routeContext（不应 panic）
 	ReleaseContext(context.Background())
 }
 
-// TestContextPool tests the context pooling mechanism
+// TestContextPool 测试 context 池化机制
 func TestContextPool(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	paramPairs[0] = paramPair{key: "id", value: "pool_test"}
 
-	// Acquire and release multiple times
+	// 多次获取和释放
 	for i := 0; i < 100; i++ {
 		ctx := acquireContext(parent, &paramPairs, 1)
 		val, ok := ctx.GetParam("id")
@@ -315,12 +315,12 @@ func TestContextPool(t *testing.T) {
 	}
 }
 
-// TestRouteContext_MaxParams tests the MaxParams limit
+// TestRouteContext_MaxParams 测试 MaxParams 限制
 func TestRouteContext_MaxParams(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 
-	// Fill all params
+	// 填充所有参数
 	for i := 0; i < MaxParams; i++ {
 		paramPairs[i] = paramPair{key: "key", value: "value"}
 	}
@@ -333,7 +333,7 @@ func TestRouteContext_MaxParams(t *testing.T) {
 	}
 }
 
-// BenchmarkRouteContext_GetParam benchmarks GetParam performance
+// BenchmarkRouteContext_GetParam 基准测试 GetParam 性能
 func BenchmarkRouteContext_GetParam(b *testing.B) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -348,7 +348,7 @@ func BenchmarkRouteContext_GetParam(b *testing.B) {
 	}
 }
 
-// BenchmarkRouteContext_SetValue benchmarks SetValue performance
+// BenchmarkRouteContext_SetValue 基准测试 SetValue 性能
 func BenchmarkRouteContext_SetValue(b *testing.B) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -361,7 +361,7 @@ func BenchmarkRouteContext_SetValue(b *testing.B) {
 	}
 }
 
-// BenchmarkRouteContext_Value benchmarks Value method performance
+// BenchmarkRouteContext_Value 基准测试 Value 方法性能
 func BenchmarkRouteContext_Value(b *testing.B) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -375,7 +375,7 @@ func BenchmarkRouteContext_Value(b *testing.B) {
 	}
 }
 
-// BenchmarkContextPool benchmarks context pooling
+// BenchmarkContextPool 基准测试 context 池化性能
 func BenchmarkContextPool(b *testing.B) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -388,7 +388,7 @@ func BenchmarkContextPool(b *testing.B) {
 	}
 }
 
-// BenchmarkContextPool_Parallel benchmarks parallel context pooling
+// BenchmarkContextPool_Parallel 基准测试并行 context 池化性能
 func BenchmarkContextPool_Parallel(b *testing.B) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -402,13 +402,13 @@ func BenchmarkContextPool_Parallel(b *testing.B) {
 	})
 }
 
-// TestExecuteHandler tests the ExecuteHandler function
+// TestExecuteHandler 测试 ExecuteHandler 函数
 func TestExecuteHandler(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 	paramPairs[0] = paramPair{key: "id", value: "123"}
 
-	// Test successful execution
+	// 测试成功执行
 	ctx := acquireContext(parent, &paramPairs, 1)
 	called := false
 	handler := func(ctx context.Context) error {
@@ -428,20 +428,20 @@ func TestExecuteHandler(t *testing.T) {
 		t.Error("handler was not called")
 	}
 
-	// Verify context was released (Context should be nil)
+	// 验证 context 已被释放（Context 应该是 nil）
 	if ctx.Context != nil {
 		t.Error("context was not released after ExecuteHandler")
 	}
 }
 
-// TestExecuteHandler_WithMiddleware tests ExecuteHandler with middleware
+// TestExecuteHandler_WithMiddleware 测试带中间件的 ExecuteHandler
 func TestExecuteHandler_WithMiddleware(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
 
 	ctx := acquireContext(parent, &paramPairs, 0)
 
-	// Track execution order
+	// 跟踪执行顺序
 	var order []string
 
 	handler := func(ctx context.Context) error {
@@ -472,7 +472,7 @@ func TestExecuteHandler_WithMiddleware(t *testing.T) {
 		t.Errorf("ExecuteHandler returned error: %v", err)
 	}
 
-	// Verify execution order: middleware1 -> middleware2 -> handler -> middleware2 -> middleware1
+	// 验证执行顺序：middleware1 -> middleware2 -> handler -> middleware2 -> middleware1
 	expectedOrder := []string{
 		"middleware1_before",
 		"middleware2_before",
@@ -492,7 +492,7 @@ func TestExecuteHandler_WithMiddleware(t *testing.T) {
 	}
 }
 
-// TestExecuteHandler_WithError tests ExecuteHandler when handler returns error
+// TestExecuteHandler_WithError 测试当 handler 返回错误时的 ExecuteHandler
 func TestExecuteHandler_WithError(t *testing.T) {
 	parent := context.Background()
 	var paramPairs [MaxParams]paramPair
@@ -509,7 +509,7 @@ func TestExecuteHandler_WithError(t *testing.T) {
 		t.Errorf("ExecuteHandler returned wrong error: got %v, want %v", err, expectedErr)
 	}
 
-	// Verify context was still released even with error
+	// 验证即使有错误 context 仍然被释放
 	if ctx.Context != nil {
 		t.Error("context was not released after ExecuteHandler with error")
 	}
