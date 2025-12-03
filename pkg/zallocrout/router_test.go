@@ -173,8 +173,8 @@ func TestRouter_ParamNameConflict(t *testing.T) {
 	handler := func(ctx context.Context) error { return nil }
 
 	// Register routes in the same order as HTTP example
-	router.AddRoute("GET", "/users/:id", handler)
-	router.AddRoute("GET", "/users/:userId/posts/:postId", handler)
+	_ = router.AddRoute("GET", "/users/:id", handler)
+	_ = router.AddRoute("GET", "/users/:userId/posts/:postId", handler)
 
 	// Test single param route
 	ctx1, _, _, ok := router.Match("GET", "/users/123", context.Background())
@@ -215,8 +215,8 @@ func TestRouter_RoutePriority(t *testing.T) {
 	paramHandler := func(ctx context.Context) error { return nil }
 
 	// 注册路由
-	router.AddRoute("GET", "/users/admin", staticHandler)
-	router.AddRoute("GET", "/users/:id", paramHandler)
+	_ = router.AddRoute("GET", "/users/admin", staticHandler)
+	_ = router.AddRoute("GET", "/users/:id", paramHandler)
 
 	// 匹配 /users/admin 应该匹配静态路由
 	ctx, _, _, ok := router.Match("GET", "/users/admin", context.Background())
@@ -267,7 +267,7 @@ func TestRouter_Middlewares(t *testing.T) {
 		return nil
 	}
 
-	router.AddRoute("GET", "/test", handler, middleware1, middleware2)
+	_ = router.AddRoute("GET", "/test", handler, middleware1, middleware2)
 
 	ctx, h, mws, ok := router.Match("GET", "/test", context.Background())
 	if !ok {
@@ -296,7 +296,7 @@ func TestRouter_HotCache(t *testing.T) {
 	router := NewRouter()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/users/:id", handler)
+	_ = router.AddRoute("GET", "/users/:id", handler)
 
 	// 匹配多次以触发缓存
 	for i := 0; i < hotCacheThreshold+10; i++ {
@@ -325,7 +325,7 @@ func TestRouter_DisableHotCache(t *testing.T) {
 	router.DisableHotCache()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/users/:id", handler)
+	_ = router.AddRoute("GET", "/users/:id", handler)
 
 	// 匹配多次
 	for i := 0; i < hotCacheThreshold+10; i++ {
@@ -348,7 +348,7 @@ func TestRouter_ClearHotCache(t *testing.T) {
 	router := NewRouter()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/users/:id", handler)
+	_ = router.AddRoute("GET", "/users/:id", handler)
 
 	// 触发缓存
 	for i := 0; i < hotCacheThreshold+10; i++ {
@@ -374,9 +374,9 @@ func TestRouter_Metrics(t *testing.T) {
 	router := NewRouter()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/static", handler)
-	router.AddRoute("GET", "/users/:id", handler)
-	router.AddRoute("GET", "/files/*path", handler)
+	_ = router.AddRoute("GET", "/static", handler)
+	_ = router.AddRoute("GET", "/users/:id", handler)
+	_ = router.AddRoute("GET", "/files/*path", handler)
 
 	metrics := router.Metrics()
 	if metrics.StaticRoutes != 1 {
@@ -406,7 +406,7 @@ func TestRouter_MetricsReset(t *testing.T) {
 	router := NewRouter()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/test", handler)
+	_ = router.AddRoute("GET", "/test", handler)
 
 	// 触发一些匹配
 	for i := 0; i < 10; i++ {
@@ -454,7 +454,7 @@ func TestRouter_ConcurrentAccess(t *testing.T) {
 	router := NewRouter()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/users/:id", handler)
+	_ = router.AddRoute("GET", "/users/:id", handler)
 
 	var wg sync.WaitGroup
 	goroutines := 100
@@ -492,13 +492,13 @@ func TestRouter_PathNormalization(t *testing.T) {
 	router := NewRouter()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/api/users", handler)
+	_ = router.AddRoute("GET", "/api/users", handler)
 
 	// 测试需要规范化的路径
 	tests := []string{
-		"/api/users/",     // 结尾斜杠
-		"/api//users",     // 双斜杠
-		"/api/./users",    // 当前目录
+		"/api/users/",      // 结尾斜杠
+		"/api//users",      // 双斜杠
+		"/api/./users",     // 当前目录
 		"/api/v1/../users", // 父目录
 	}
 
@@ -529,8 +529,8 @@ func TestRouter_StaticVsParamPriority(t *testing.T) {
 	}
 
 	// 注册路由（注册顺序不应影响优先级）
-	router.AddRoute("GET", "/api/:resource", paramHandler)
-	router.AddRoute("GET", "/api/users", staticHandler)
+	_ = router.AddRoute("GET", "/api/:resource", paramHandler)
+	_ = router.AddRoute("GET", "/api/users", staticHandler)
 
 	// 测试访问静态路由（应该匹配静态路由，不是参数路由）
 	ctx, handler, _, ok := router.Match("GET", "/api/users", context.Background())
@@ -540,7 +540,7 @@ func TestRouter_StaticVsParamPriority(t *testing.T) {
 	defer ReleaseContext(ctx)
 
 	// 执行处理器
-	handler(ctx)
+	_ = handler(ctx)
 
 	if !staticCalled {
 		t.Error("Should call static handler")
@@ -563,8 +563,8 @@ func TestRouter_ParamVsWildcardPriority(t *testing.T) {
 	wildcardHandler := func(ctx context.Context) error { return nil }
 
 	// 注册路由（使用不同的路径前缀避免冲突）
-	router.AddRoute("GET", "/api/:resource", paramHandler)
-	router.AddRoute("GET", "/files/*path", wildcardHandler)
+	_ = router.AddRoute("GET", "/api/:resource", paramHandler)
+	_ = router.AddRoute("GET", "/files/*path", wildcardHandler)
 
 	// 测试参数路由
 	ctx1, _, _, ok := router.Match("GET", "/api/users", context.Background())
@@ -662,11 +662,11 @@ func TestRouter_MixedRouteTypes(t *testing.T) {
 	handler := func(ctx context.Context) error { return nil }
 
 	// 注册混合路由
-	router.AddRoute("GET", "/static", handler)
-	router.AddRoute("GET", "/static/page", handler)
-	router.AddRoute("GET", "/dynamic/:id", handler)
-	router.AddRoute("GET", "/dynamic/:id/edit", handler)
-	router.AddRoute("GET", "/files/*path", handler)
+	_ = router.AddRoute("GET", "/static", handler)
+	_ = router.AddRoute("GET", "/static/page", handler)
+	_ = router.AddRoute("GET", "/dynamic/:id", handler)
+	_ = router.AddRoute("GET", "/dynamic/:id/edit", handler)
+	_ = router.AddRoute("GET", "/files/*path", handler)
 
 	tests := []struct {
 		path           string
@@ -710,9 +710,9 @@ func TestRouter_SameParamNameDifferentPosition(t *testing.T) {
 	handler := func(ctx context.Context) error { return nil }
 
 	// 注册具有相同参数名但在不同位置的路由
-	router.AddRoute("GET", "/api/:id", handler)
-	router.AddRoute("GET", "/users/:id/profile", handler)
-	router.AddRoute("GET", "/posts/:id/author/:id", handler) // 同名参数出现两次
+	_ = router.AddRoute("GET", "/api/:id", handler)
+	_ = router.AddRoute("GET", "/users/:id/profile", handler)
+	_ = router.AddRoute("GET", "/posts/:id/author/:id", handler) // 同名参数出现两次
 
 	// 测试 /api/:id
 	ctx1, _, _, ok := router.Match("GET", "/api/123", context.Background())
@@ -746,7 +746,7 @@ func TestRouter_EdgeCasePaths(t *testing.T) {
 	handler := func(ctx context.Context) error { return nil }
 
 	// 注册根路径
-	router.AddRoute("GET", "/", handler)
+	_ = router.AddRoute("GET", "/", handler)
 
 	// 测试根路径
 	ctx, _, _, ok := router.Match("GET", "/", context.Background())
@@ -770,7 +770,7 @@ func TestRouter_SpecialCharsInParams(t *testing.T) {
 	router := NewRouter()
 
 	handler := func(ctx context.Context) error { return nil }
-	router.AddRoute("GET", "/users/:id", handler)
+	_ = router.AddRoute("GET", "/users/:id", handler)
 
 	tests := []struct {
 		path     string
@@ -806,8 +806,8 @@ func TestRouter_MethodIsolation(t *testing.T) {
 	postHandler := func(ctx context.Context) error { return nil }
 
 	// 同一路径注册不同方法
-	router.AddRoute("GET", "/api/users", getHandler)
-	router.AddRoute("POST", "/api/users", postHandler)
+	_ = router.AddRoute("GET", "/api/users", getHandler)
+	_ = router.AddRoute("POST", "/api/users", postHandler)
 
 	// 测试 GET 方法
 	ctx1, h1, _, ok := router.Match("GET", "/api/users", context.Background())

@@ -7,6 +7,13 @@ import (
 	"time"
 )
 
+type testContextKey string
+
+const (
+	testParentKey testContextKey = "parent_key"
+	testRouteKey  testContextKey = "route_key"
+)
+
 // TestRouteContext_GetParam tests the GetParam method
 func TestRouteContext_GetParam(t *testing.T) {
 	parent := context.Background()
@@ -96,28 +103,28 @@ func TestRouteContext_SetValue_MaxValues(t *testing.T) {
 
 // TestRouteContext_Value tests the Value method (context.Context interface)
 func TestRouteContext_Value(t *testing.T) {
-	parent := context.WithValue(context.Background(), "parent_key", "parent_value")
+	parent := context.WithValue(context.Background(), testParentKey, "parent_value")
 	var paramPairs [MaxParams]paramPair
 	ctx := acquireContext(parent, &paramPairs, 0)
 	defer releaseContext(ctx)
 
 	// Set a value in routeContext
-	ctx.SetValue("route_key", "route_value")
+	ctx.SetValue(testRouteKey, "route_value")
 
 	// Test retrieving routeContext value via Value method
-	val := ctx.Value("route_key")
+	val := ctx.Value(testRouteKey)
 	if val != "route_value" {
 		t.Errorf("Value(route_key) = %v; want route_value", val)
 	}
 
 	// Test retrieving parent context value
-	val = ctx.Value("parent_key")
+	val = ctx.Value(testParentKey)
 	if val != "parent_value" {
 		t.Errorf("Value(parent_key) = %v; want parent_value", val)
 	}
 
 	// Test non-existing value
-	val = ctx.Value("nonexistent")
+	val = ctx.Value(testContextKey("nonexistent"))
 	if val != nil {
 		t.Errorf("Value(nonexistent) = %v; want nil", val)
 	}
@@ -507,4 +514,3 @@ func TestExecuteHandler_WithError(t *testing.T) {
 		t.Error("context was not released after ExecuteHandler with error")
 	}
 }
-
