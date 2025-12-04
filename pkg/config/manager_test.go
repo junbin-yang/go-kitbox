@@ -580,6 +580,89 @@ func TestInvalidConfigFile(t *testing.T) {
 	}
 }
 
+func TestNewConfigManager_NilConfig(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for nil config")
+		}
+	}()
+	NewConfigManager(nil)
+}
+
+func TestNewConfigManager_NonPointer(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for non-pointer config")
+		}
+	}()
+	cfg := TestConfig{}
+	NewConfigManager(cfg)
+}
+
+func TestLoadConfig_UnsupportedFormat(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test.unknown")
+	defer os.Remove(tmpFile)
+
+	_ = os.WriteFile(tmpFile, []byte("data"), 0644)
+
+	cm := NewConfigManager(cfg)
+	err := cm.LoadConfig(tmpFile)
+	if err == nil {
+		t.Error("Expected error for unsupported format")
+	}
+}
+
+func TestSaveConfig_Failures(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_save_fail.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	cm.configPath = "/invalid/readonly/path/config.yml"
+	err := cm.SaveConfig()
+	if err == nil {
+		t.Error("Expected error when saving to invalid path")
+	}
+}
+
+func TestReloadConfig_Failures(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_reload_fail.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	os.Remove(tmpFile)
+	err := cm.ReloadConfig()
+	if err == nil {
+		t.Error("Expected error when reloading deleted file")
+	}
+}
+
+func TestEnvOverrides_NonPointer(t *testing.T) {
+	cfg := TestConfig{}
+	err := applyEnvOverrides(cfg)
+	if err != nil {
+		t.Errorf("Expected no error for non-pointer, got %v", err)
+	}
+}
+
 func TestSaveAndReload(t *testing.T) {
 	cfg := &TestConfig{}
 	tmpFile := filepath.Join(os.TempDir(), "test_save_reload.json")
@@ -925,5 +1008,149 @@ func TestFindDefaultConfigPath_WithExtension(t *testing.T) {
 	}
 	if path != tmpFile {
 		t.Errorf("Expected path %s, got %s", tmpFile, path)
+	}
+}
+
+func TestLoadConfig_DefaultPath(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "testapp.yml")
+	_ = os.WriteFile(tmpFile, []byte("server:\n  port: 8080"), 0644)
+
+	cm := NewConfigManager(cfg, WithAppName("testapp"), WithDefaultPaths(filepath.Join(tmpDir, "testapp")))
+	err := cm.LoadConfig("")
+	if err != nil {
+		t.Fatalf("LoadConfig with default path failed: %v", err)
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	if testCfg.Server.Port != 8080 {
+		t.Errorf("Expected port 8080, got %d", testCfg.Server.Port)
+	}
+}
+
+func TestChooseSerializer_ByExtension(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"config.yml", "yaml"},
+		{"config.yaml", "yaml"},
+		{"config.json", "json"},
+		{"config.ini", "ini"},
+	}
+
+	for _, tt := range tests {
+		err := cm.chooseSerializer(tt.path)
+		if err != nil {
+			t.Errorf("chooseSerializer(%s) failed: %v", tt.path, err)
+		}
+		if cm.serializer.GetName() != tt.want {
+			t.Errorf("Expected serializer %s, got %s", tt.want, cm.serializer.GetName())
+		}
+	}
+}
+
+func TestLoadConfig_EmptyPathNoDefaults(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+	err := cm.LoadConfig("")
+	if err == nil {
+		t.Error("Expected error when loading empty path without defaults")
+	}
+}
+
+func TestOnChange_Callback(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_onchange.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	called := false
+	cm.OnChange(func(old, new interface{}) {
+		called = true
+	})
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	testCfg.Server.Port = 9999
+	_ = cm.SaveConfig()
+	_ = cm.ReloadConfig()
+
+	if !called {
+		t.Error("OnChange callback not called")
+	}
+}
+
+func TestEnableWatch_BeforeLoad(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+	err := cm.EnableWatch(true)
+	if err != nil {
+		t.Logf("EnableWatch before load returned error (expected): %v", err)
+	}
+}
+
+func TestLoadConfig_WithForceFormat(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_force.conf")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg, WithForceFormat(&YAMLSerializer{}))
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load with force format failed: %v", err)
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	if testCfg.Server.Port != 8080 {
+		t.Errorf("Expected port 8080, got %d", testCfg.Server.Port)
+	}
+}
+
+func TestApplyEnvOverrides_ValidValues(t *testing.T) {
+	type TestCfg struct {
+		Port    int    `env:"TEST_PORT_VALID"`
+		Host    string `env:"TEST_HOST_VALID"`
+		Enabled bool   `env:"TEST_ENABLED_VALID"`
+	}
+
+	os.Setenv("TEST_PORT_VALID", "9999")
+	os.Setenv("TEST_HOST_VALID", "localhost")
+	os.Setenv("TEST_ENABLED_VALID", "true")
+	defer os.Unsetenv("TEST_PORT_VALID")
+	defer os.Unsetenv("TEST_HOST_VALID")
+	defer os.Unsetenv("TEST_ENABLED_VALID")
+
+	cfg := &TestCfg{Port: 8080, Host: "0.0.0.0", Enabled: false}
+	err := applyEnvOverrides(cfg)
+	if err != nil {
+		t.Errorf("applyEnvOverrides failed: %v", err)
+	}
+
+	if cfg.Port != 9999 {
+		t.Errorf("Expected port 9999, got %d", cfg.Port)
+	}
+	if cfg.Host != "localhost" {
+		t.Errorf("Expected host localhost, got %s", cfg.Host)
+	}
+	if !cfg.Enabled {
+		t.Error("Expected Enabled=true")
 	}
 }

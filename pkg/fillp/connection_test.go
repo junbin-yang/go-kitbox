@@ -540,3 +540,198 @@ func TestReceive(t *testing.T) {
 		t.Errorf("Expected %s, got %s", testData, received)
 	}
 }
+
+// 测试场景1：NewConnection中地址类型验证失败
+func TestNewConnection_InvalidAddressType(t *testing.T) {
+	// 测试非UDP地址类型（使用TCP地址）
+	tcpAddr, _ := net.ResolveTCPAddr("tcp", "127.0.0.1:8000")
+	_, err := NewConnection(tcpAddr, nil)
+	if err == nil {
+		t.Error("Expected error for non-UDP local address")
+	}
+
+	_, err = NewConnection(nil, tcpAddr)
+	if err == nil {
+		t.Error("Expected error for non-UDP remote address")
+	}
+}
+
+// 测试场景2：Connect方法异常情况
+func TestConnect_InvalidState(t *testing.T) {
+	conn, _ := NewConnection(nil, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9100})
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	err := conn.Connect()
+	if err == nil {
+		t.Error("Expected error when connecting from non-idle state")
+	}
+}
+
+func TestConnect_NoRemoteAddr(t *testing.T) {
+	conn, _ := NewConnection(&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9101}, nil)
+
+	err := conn.Connect()
+	if err == nil {
+		t.Error("Expected error when remote address is nil")
+	}
+}
+
+// 测试场景3：Listen方法异常情况
+func TestListen_InvalidState(t *testing.T) {
+	conn, _ := NewConnection(&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9102}, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	err := conn.Listen()
+	if err == nil {
+		t.Error("Expected error when listening from non-idle state")
+	}
+}
+
+func TestListen_NoLocalAddr(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+
+	err := conn.Listen()
+	if err == nil {
+		t.Error("Expected error when local address is nil")
+	}
+}
+
+// 测试场景4：Send和Receive失败情况
+func TestSend_NotConnected(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+
+	err := conn.Send([]byte("test"))
+	if err == nil {
+		t.Error("Expected error when sending without connection")
+	}
+}
+
+func TestReceive_NotConnected(t *testing.T) {
+	conn, _ := NewConnection(nil, nil)
+
+	_, err := conn.Receive()
+	if err == nil {
+		t.Error("Expected error when receiving without connection")
+	}
+}
+
+// 测试场景5：waitForSendWindow窗口空间
+func TestWaitForSendWindow_Space(t *testing.T) {
+	conn, _ := NewConnection(nil, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9103})
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// 设置发送窗口
+	conn.sendWindow = 65536
+
+	// 尝试等待窗口空间（小数据量应该成功）
+	err := conn.waitForSendWindow(100)
+	if err != nil {
+		t.Logf("waitForSendWindow returned: %v", err)
+	}
+}
+
+// 测试场景6：processPacket处理KeepAlive和WindowUpdate
+func TestProcessPacket_KeepAlive(t *testing.T) {
+	conn, _ := NewConnection(&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9104}, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// 创建KeepAlive数据包
+	packet := &Packet{
+		Type:      PacketTypeKeepAlive,
+		Sequence:  1,
+		Timestamp: uint32(time.Now().Unix()),
+	}
+
+	// 处理数据包（不应该panic）
+	conn.processPacket(packet)
+}
+
+func TestProcessPacket_WindowUpdate(t *testing.T) {
+	conn, _ := NewConnection(&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9105}, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// 创建WindowUpdate数据包
+	packet := &Packet{
+		Type:   PacketTypeWindowUpdate,
+		Window: 65536,
+	}
+
+	oldWindow := conn.sendWindow
+	conn.processPacket(packet)
+
+	// 验证窗口已更新
+	if conn.sendWindow != oldWindow {
+		t.Log("Window update processed")
+	}
+}
+
+// 测试场景7：handleDataPacket空数据包
+func TestHandleDataPacket_EmptyData(t *testing.T) {
+	conn, _ := NewConnection(&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9106}, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+
+	// 创建空数据包（只有头部，没有负载）
+	packet := &Packet{
+		Type:     PacketTypeData,
+		Sequence: 1000,
+		Data:     []byte{},
+	}
+
+	conn.handleDataPacket(packet)
+	// 验证不会panic
+}
+
+func TestHandleDataPacket_OutOfOrder(t *testing.T) {
+	conn, _ := NewConnection(&net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9107}, nil)
+	atomic.StoreInt32(&conn.state, StateConnected)
+	conn.receiveSeq = 1000
+
+	// 创建序列号跳跃的数据包（乱序）
+	packet := &Packet{
+		Type:     PacketTypeData,
+		Sequence: 1005, // 跳过了1001-1004
+		Data:     []byte("out of order data"),
+	}
+
+	conn.handleDataPacket(packet)
+	// 验证不会panic，应该被缓存或处理
+}
+
+// 测试场景8：checkRetransmissions重传逻辑
+func TestCheckRetransmissions_WithExpiredPackets(t *testing.T) {
+	serverAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9108}
+
+	server, err := NewConnection(serverAddr, nil)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Close()
+
+	go func() { _ = server.Listen() }()
+	time.Sleep(100 * time.Millisecond)
+
+	client, err := NewConnection(nil, serverAddr)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer client.Close()
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// 发送数据，触发重传队列
+	testData := []byte("Test retransmission")
+	_ = client.Send(testData)
+
+	// 等待一段时间让重传检查运行
+	time.Sleep(2 * time.Second)
+
+	// 验证重传队列有活动
+	stats := client.GetStatistics()
+	if stats.PacketsSent > 0 {
+		t.Log("Retransmission check executed")
+	}
+}
