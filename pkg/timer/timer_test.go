@@ -83,6 +83,11 @@ func TestScenario3_RemoveTimer(t *testing.T) {
 	if afterStop != beforeStop {
 		t.Errorf("定时器停止后不应继续执行，停止前 %d 次，停止后 %d 次", beforeStop, afterStop)
 	}
+
+	err = mgr.RemoveTimer("test1")
+	if err == nil {
+		t.Fatalf("停止不存在的定时器应该失败")
+	}
 }
 
 // 场景4：重置定时器间隔
@@ -108,6 +113,11 @@ func TestScenario4_ResetTimer(t *testing.T) {
 
 	if countAfter <= countBefore {
 		t.Error("重置后定时器应以新间隔执行")
+	}
+
+	err = mgr.ResetTimer("test1", 50*time.Millisecond)
+	if err == nil {
+		t.Fatalf("重置不存在的定时器应该失败")
 	}
 }
 
@@ -155,6 +165,10 @@ func TestScenario6_GetTimer(t *testing.T) {
 
 	if info.IsOnce {
 		t.Error("应为周期性定时器")
+	}
+
+	if _, ok := mgr.GetTimer("test1"); ok {
+		t.Fatal("定时器不应存在")
 	}
 }
 
@@ -233,6 +247,16 @@ func TestScenario10_DuplicateID(t *testing.T) {
 
 	err2 := mgr.CreateTimer("dup", 200*time.Millisecond, func() {})
 	if err2 == nil {
+		t.Error("重复ID应返回错误")
+	}
+
+	err3 := mgr.CreateOnceTimer("onec", 100*time.Millisecond, func() {})
+	if err3 != nil {
+		t.Fatalf("首次创建失败: %v", err3)
+	}
+
+	err4 := mgr.CreateOnceTimer("onec", 200*time.Millisecond, func() {})
+	if err4 == nil {
 		t.Error("重复ID应返回错误")
 	}
 }

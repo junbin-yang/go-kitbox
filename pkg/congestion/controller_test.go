@@ -314,3 +314,53 @@ func TestCubicGetSendRate(t *testing.T) {
 		t.Errorf("Expected positive send rate, got %d", rate)
 	}
 }
+
+func TestCubicCongestionAvoidance(t *testing.T) {
+	ctrl := NewCubicController(65536, 65536, 1400)
+	for i := 0; i < 20; i++ {
+		ctrl.OnPacketSent(1400)
+		ctrl.OnAckReceived(1400, 50*time.Millisecond)
+	}
+	if ctrl.GetCongestionWindow() == 0 {
+		t.Error("Expected non-zero cwnd")
+	}
+}
+
+func TestBBRStateTransitions(t *testing.T) {
+	ctrl := NewBBRController(2800, 65536, 1400)
+	for i := 0; i < 30; i++ {
+		ctrl.OnPacketSent(1400)
+		ctrl.OnAckReceived(1400, 50*time.Millisecond)
+	}
+	stats := ctrl.GetStatistics()
+	if stats.CurrentState == "" {
+		t.Error("Expected BBR state")
+	}
+}
+
+func TestRenoFastRecovery(t *testing.T) {
+	ctrl := NewRenoController(10000, 65536, 1400)
+	for i := 0; i < 5; i++ {
+		ctrl.OnPacketSent(1400)
+		ctrl.OnAckReceived(1400, 50*time.Millisecond)
+	}
+	ctrl.OnPacketLost()
+	for i := 0; i < 3; i++ {
+		ctrl.OnPacketSent(1400)
+		ctrl.OnAckReceived(1400, 50*time.Millisecond)
+	}
+	if ctrl.GetCongestionWindow() == 0 {
+		t.Error("Expected recovery")
+	}
+}
+
+func TestVegasDelayDetection(t *testing.T) {
+	ctrl := NewVegasController(2800, 65536, 1400)
+	for i := 0; i < 10; i++ {
+		ctrl.OnPacketSent(1400)
+		ctrl.OnAckReceived(1400, time.Duration(50+i*5)*time.Millisecond)
+	}
+	if ctrl.GetCongestionWindow() == 0 {
+		t.Error("Expected Vegas to adjust")
+	}
+}

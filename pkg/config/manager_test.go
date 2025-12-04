@@ -298,6 +298,325 @@ func TestScenario10_CloseManager(t *testing.T) {
 	cm.Close()
 }
 
+func TestSaveConfig(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_save.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	testCfg.Server.Port = 7777
+
+	if err := cm.SaveConfig(); err != nil {
+		t.Fatalf("保存配置失败: %v", err)
+	}
+
+	cm2 := NewConfigManager(&TestConfig{})
+	if err := cm2.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("重新加载配置失败: %v", err)
+	}
+
+	configData2, _ := cm2.GetConfig()
+	testCfg2 := configData2.(*TestConfig)
+	if testCfg2.Server.Port != 7777 {
+		t.Errorf("期望端口 7777, 实际 %d", testCfg2.Server.Port)
+	}
+}
+
+func TestSerializerMarshal(t *testing.T) {
+	cfg := &TestConfig{}
+	cfg.Server.Port = 8888
+
+	yamlSer := &YAMLSerializer{}
+	data, err := yamlSer.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("YAML marshal failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Expected non-empty YAML data")
+	}
+
+	jsonSer := &JSONSerializer{}
+	data, err = jsonSer.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("JSON marshal failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Expected non-empty JSON data")
+	}
+}
+
+func TestINIFormat(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test.ini")
+	defer os.Remove(tmpFile)
+
+	iniContent := `[server]
+port = 3000
+host = localhost
+timeout = 30
+
+[logger]
+level = warn
+path = /var/log
+rotate = true
+`
+	_ = os.WriteFile(tmpFile, []byte(iniContent), 0644)
+
+	cm := NewConfigManager(cfg, WithSerializer(&INISerializer{}))
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("加载INI配置失败: %v", err)
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	if testCfg.Server.Port != 3000 {
+		t.Errorf("期望端口 3000, 实际 %d", testCfg.Server.Port)
+	}
+}
+
+func TestInvalidPath(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+	err := cm.LoadConfig("/nonexistent/path/config.yml")
+	if err == nil {
+		t.Error("Expected error for nonexistent path")
+	}
+}
+
+func TestGetConfigBeforeLoad(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+	configData, _ := cm.GetConfig()
+	if configData == nil {
+		t.Error("Expected non-nil config")
+	}
+}
+
+func TestSerializerUnmarshal(t *testing.T) {
+	yamlData := []byte("server:\n  port: 9999\n")
+	cfg := &TestConfig{}
+
+	yamlSer := &YAMLSerializer{}
+	err := yamlSer.Unmarshal(yamlData, cfg)
+	if err != nil {
+		t.Fatalf("YAML unmarshal failed: %v", err)
+	}
+	if cfg.Server.Port != 9999 {
+		t.Errorf("Expected port 9999, got %d", cfg.Server.Port)
+	}
+}
+
+
+func TestWatchConfigChange(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_watch.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg, WithConfigWatch(true, 100*time.Millisecond))
+
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	_ = os.WriteFile(tmpFile, data, 0644)
+	time.Sleep(300 * time.Millisecond)
+
+	cm.Close()
+}
+
+func TestINIUnmarshal(t *testing.T) {
+	iniData := []byte("[server]\nport = 4444\n")
+	cfg := &TestConfig{}
+
+	iniSer := &INISerializer{}
+	err := iniSer.Unmarshal(iniData, cfg)
+	if err != nil {
+		t.Fatalf("INI unmarshal failed: %v", err)
+	}
+	if cfg.Server.Port != 4444 {
+		t.Errorf("Expected port 4444, got %d", cfg.Server.Port)
+	}
+}
+
+func TestINIMarshalData(t *testing.T) {
+	cfg := &TestConfig{}
+	cfg.Server.Port = 6666
+
+	iniSer := &INISerializer{}
+	data, err := iniSer.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("INI marshal failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("Expected non-empty INI data")
+	}
+}
+
+func TestReloadConfigError(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+	err := cm.ReloadConfig()
+	if err == nil {
+		t.Error("Expected error when reloading before load")
+	}
+}
+
+func TestSaveConfigError(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg)
+	err := cm.SaveConfig()
+	if err == nil {
+		t.Error("Expected error when saving before load")
+	}
+}
+
+func TestJSONUnmarshal(t *testing.T) {
+	jsonData := []byte(`{"server":{"port":3333}}`)
+	cfg := &TestConfig{}
+
+	jsonSer := &JSONSerializer{}
+	err := jsonSer.Unmarshal(jsonData, cfg)
+	if err != nil {
+		t.Fatalf("JSON unmarshal failed: %v", err)
+	}
+	if cfg.Server.Port != 3333 {
+		t.Errorf("Expected port 3333, got %d", cfg.Server.Port)
+	}
+}
+
+func TestWithConfigFormats(t *testing.T) {
+	cfg := &TestConfig{}
+	cm := NewConfigManager(cfg, WithConfigFormats(&YAMLSerializer{}, &JSONSerializer{}))
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	if err := cm.LoadConfig(testDataPath); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	if testCfg.Server.Port != 8080 {
+		t.Errorf("Expected port 8080, got %d", testCfg.Server.Port)
+	}
+}
+
+func TestEnableWatchAfterLoad(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_enable_watch.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if err := cm.EnableWatch(true); err != nil {
+		t.Fatalf("Enable watch failed: %v", err)
+	}
+
+	if err := cm.EnableWatch(false); err != nil {
+		t.Fatalf("Disable watch failed: %v", err)
+	}
+}
+
+func TestMultipleReload(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_multi_reload.yml")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.yml")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg)
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	for i := 0; i < 3; i++ {
+		if err := cm.ReloadConfig(); err != nil {
+			t.Fatalf("Reload %d failed: %v", i, err)
+		}
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	if testCfg.Server.Port != 8080 {
+		t.Errorf("Expected port 8080, got %d", testCfg.Server.Port)
+	}
+}
+
+
+func TestInvalidConfigFile(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "invalid.yml")
+	defer os.Remove(tmpFile)
+
+	_ = os.WriteFile(tmpFile, []byte("invalid: [yaml content"), 0644)
+
+	cm := NewConfigManager(cfg)
+	err := cm.LoadConfig(tmpFile)
+	if err == nil {
+		t.Error("Expected error for invalid YAML")
+	}
+}
+
+func TestSaveAndReload(t *testing.T) {
+	cfg := &TestConfig{}
+	tmpFile := filepath.Join(os.TempDir(), "test_save_reload.json")
+	defer os.Remove(tmpFile)
+
+	testDataPath := filepath.Join("..", "..", "internal", "testdata", "test.json")
+	data, _ := os.ReadFile(testDataPath)
+	_ = os.WriteFile(tmpFile, data, 0644)
+
+	cm := NewConfigManager(cfg, WithSerializer(&JSONSerializer{}))
+	if err := cm.LoadConfig(tmpFile); err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	configData, _ := cm.GetConfig()
+	testCfg := configData.(*TestConfig)
+	testCfg.Server.Port = 1111
+	testCfg.Logger.Level = "trace"
+
+	if err := cm.SaveConfig(); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	if err := cm.ReloadConfig(); err != nil {
+		t.Fatalf("Reload failed: %v", err)
+	}
+
+	configData2, _ := cm.GetConfig()
+	testCfg2 := configData2.(*TestConfig)
+	if testCfg2.Server.Port != 1111 {
+		t.Errorf("Expected port 1111, got %d", testCfg2.Server.Port)
+	}
+	if testCfg2.Logger.Level != "trace" {
+		t.Errorf("Expected level trace, got %s", testCfg2.Logger.Level)
+	}
+}
+
 // 场景11：INI格式配置
 func TestScenario11_INIFormat(t *testing.T) {
 	cfg := &TestConfig{}

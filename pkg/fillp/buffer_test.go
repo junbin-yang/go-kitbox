@@ -116,3 +116,48 @@ func Test_RetransmissionQueue(t *testing.T) {
 	rq.Clear()
 	fmt.Println("重传队列清空成功，当前队列大小：", rq.Size())
 }
+
+func TestRingBuffer_ClosedOperations(t *testing.T) {
+	rb := NewRingBuffer(1024)
+	rb.Close()
+
+	if err := rb.Write([]byte("test")); err == nil {
+		t.Error("Expected error when writing to closed buffer")
+	}
+
+	if _, err := rb.Read(10); err == nil {
+		t.Error("Expected error when reading from closed buffer")
+	}
+
+	if _, err := rb.Peek(10); err == nil {
+		t.Error("Expected error when peeking closed buffer")
+	}
+}
+
+func TestRingBuffer_UnreadInsufficientSpace(t *testing.T) {
+	rb := NewRingBuffer(10)
+	_ = rb.Write([]byte("1234567890"))
+
+	largeData := make([]byte, 20)
+	rb.Unread(largeData)
+
+	if rb.Used() != 10 {
+		t.Errorf("Expected used space 10, got %d", rb.Used())
+	}
+}
+
+func TestRetransmissionQueue_TrimUpTo(t *testing.T) {
+	rq := NewRetransmissionQueue()
+	now := time.Now().UnixMilli()
+
+	packet := make([]byte, 22+50)
+	packet[0] = PacketTypeData
+	rq.Add(1000, packet, now)
+	rq.Add(2000, packet, now)
+
+	rq.TrimUpTo(1025)
+
+	if rq.Size() != 2 {
+		t.Errorf("Expected size 2, got %d", rq.Size())
+	}
+}

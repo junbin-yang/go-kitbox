@@ -36,7 +36,7 @@ results = []
 for pkg, stats in sorted(pkg_stats.items()):
     if stats['total'] > 0:
         coverage = (stats['covered'] / stats['total']) * 100
-        status = "Good" if coverage >= 75 else "Needs Work"
+        status = "Good" if coverage >= 85 else "Needs Work"
         results.append((pkg, coverage, status, stats['total'], stats['covered']))
 
 # Sort by coverage percentage
@@ -54,10 +54,10 @@ print(f"{'Overall':<50} {overall_coverage:>9.1f}%")
 print()
 
 # Show packages that need improvement
-print("\nPackages needing improvement (< 75% coverage):")
+print("\nPackages needing improvement (< 85% coverage):")
 print("-" * 80)
 for pkg, coverage, status, total, covered in results:
-    if coverage < 75:
+    if coverage < 85:
         pkg_name = pkg.split('/')[-1]
         missing = total - covered
         print(f"{pkg_name:<30} {coverage:>6.1f}%  (need {missing:>4} more statements)")

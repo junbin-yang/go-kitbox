@@ -61,3 +61,54 @@ func TestHSM_EventInheritance(t *testing.T) {
 		t.Errorf("状态错误: got %v, want root", hsm.Current())
 	}
 }
+
+func TestHSM_Callbacks(t *testing.T) {
+	hsm := NewHSM("root")
+	hsm.AddState("working", "root")
+	hsm.AddState("idle", "root")
+	_ = hsm.AddTransition("root", "working", "start")
+	_ = hsm.AddTransition("working", "idle", "stop")
+
+	entered := false
+	exited := false
+
+	hsm.SetOnEnter("idle", func(ctx context.Context, state State) error {
+		entered = true
+		return nil
+	})
+
+	hsm.SetOnExit("working", func(ctx context.Context, state State) error {
+		exited = true
+		return nil
+	})
+
+	ctx := context.Background()
+	_ = hsm.Trigger(ctx, "start")
+	_ = hsm.Trigger(ctx, "stop")
+
+	if !entered {
+		t.Error("OnEnter callback not called")
+	}
+	if !exited {
+		t.Error("OnExit callback not called")
+	}
+}
+
+func TestHSM_Reset(t *testing.T) {
+	hsm := NewHSM("root")
+	hsm.AddState("working", "root")
+	_ = hsm.AddTransition("root", "working", "start")
+
+	ctx := context.Background()
+	_ = hsm.Trigger(ctx, "start")
+
+	if hsm.Current() != "working" {
+		t.Errorf("状态错误: got %v, want working", hsm.Current())
+	}
+
+	_ = hsm.Reset()
+
+	if hsm.Current() != "root" {
+		t.Errorf("重置后状态错误: got %v, want root", hsm.Current())
+	}
+}

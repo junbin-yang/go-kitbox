@@ -121,3 +121,21 @@ func TestFSM_Can(t *testing.T) {
 		t.Error("不应该可以触发 stop 事件")
 	}
 }
+
+func TestFSM_SetOnTransition(t *testing.T) {
+	fsm := NewFSM("idle")
+	_ = fsm.AddTransition("idle", "running", "start")
+
+	called := false
+	_ = fsm.SetOnTransition("idle", "start", func(ctx context.Context, from, to State) error {
+		called = true
+		return nil
+	})
+
+	ctx := context.Background()
+	_ = fsm.Trigger(ctx, "start")
+
+	if !called {
+		t.Error("OnTransition callback not called")
+	}
+}

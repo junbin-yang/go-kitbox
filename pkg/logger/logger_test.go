@@ -138,3 +138,45 @@ func Test_ProductionRotate(t *testing.T) {
 		t.Errorf("Expected MaxAge=30, got %d", cfg.MaxAge)
 	}
 }
+
+func Test_Panic(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Panic should trigger panic")
+		}
+	}()
+	Panic("panic message", String("key", "value"))
+	Panicf("panic message: %s", "test")
+}
+
+func Test_GetError(t *testing.T) {
+	err := &testError{msg: "test error"}
+	field := GetError(err)
+	if field.Key != "error" {
+		t.Errorf("Expected field key 'error', got '%s'", field.Key)
+	}
+}
+
+type testError struct {
+	msg string
+}
+
+func (e *testError) Error() string {
+	return e.msg
+}
+
+func Test_Debugf(t *testing.T) {
+	defer func() { _ = Sync() }()
+	Debugf("debug: %s", "test")
+}
+
+func Test_RotateByTimeError(t *testing.T) {
+	cfg := &RotateConfig{
+		Filename:     "",
+		RotationTime: 24 * time.Hour,
+	}
+	writer := NewRotateByTime(cfg)
+	if writer == nil {
+		t.Error("Expected non-nil writer")
+	}
+}

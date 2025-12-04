@@ -501,3 +501,42 @@ func TestScenario22_ReceiveBlocking(t *testing.T) {
 		t.Error("Receive did not timeout")
 	}
 }
+
+func TestReceive(t *testing.T) {
+	serverAddr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9099}
+
+	server, err := NewConnection(serverAddr, nil)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	defer server.Close()
+
+	go func() { _ = server.Listen() }()
+	time.Sleep(100 * time.Millisecond)
+
+	client, err := NewConnection(nil, serverAddr)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer client.Close()
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	testData := []byte("Test Receive")
+	if err := client.Send(testData); err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+
+	received, err := server.Receive()
+	if err != nil {
+		t.Fatalf("Receive failed: %v", err)
+	}
+
+	if string(received) != string(testData) {
+		t.Errorf("Expected %s, got %s", testData, received)
+	}
+}
