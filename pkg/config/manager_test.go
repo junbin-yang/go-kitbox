@@ -657,10 +657,8 @@ func TestReloadConfig_Failures(t *testing.T) {
 
 func TestEnvOverrides_NonPointer(t *testing.T) {
 	cfg := TestConfig{}
-	err := applyEnvOverrides(cfg)
-	if err != nil {
-		t.Errorf("Expected no error for non-pointer, got %v", err)
-	}
+	applyEnvOverrides(cfg)
+	// 非指针类型会被静默忽略
 }
 
 func TestSaveAndReload(t *testing.T) {
@@ -969,10 +967,7 @@ func TestApplyEnvOverrides_InvalidInt(t *testing.T) {
 	defer os.Unsetenv("TEST_PORT")
 
 	cfg := &TestCfg{Port: 8080}
-	err := applyEnvOverrides(cfg)
-	if err != nil {
-		t.Errorf("applyEnvOverrides should not return error for invalid int: %v", err)
-	}
+	applyEnvOverrides(cfg)
 	if cfg.Port != 8080 {
 		t.Error("Port should remain unchanged when env value is invalid")
 	}
@@ -986,10 +981,7 @@ func TestApplyEnvOverrides_InvalidBool(t *testing.T) {
 	defer os.Unsetenv("TEST_ENABLED")
 
 	cfg := &TestCfg{Enabled: true}
-	err := applyEnvOverrides(cfg)
-	if err != nil {
-		t.Errorf("applyEnvOverrides should not return error for invalid bool: %v", err)
-	}
+	applyEnvOverrides(cfg)
 	if !cfg.Enabled {
 		t.Error("Enabled should remain unchanged when env value is invalid")
 	}
@@ -1139,10 +1131,7 @@ func TestApplyEnvOverrides_ValidValues(t *testing.T) {
 	defer os.Unsetenv("TEST_ENABLED_VALID")
 
 	cfg := &TestCfg{Port: 8080, Host: "0.0.0.0", Enabled: false}
-	err := applyEnvOverrides(cfg)
-	if err != nil {
-		t.Errorf("applyEnvOverrides failed: %v", err)
-	}
+	applyEnvOverrides(cfg)
 
 	if cfg.Port != 9999 {
 		t.Errorf("Expected port 9999, got %d", cfg.Port)
@@ -1153,4 +1142,17 @@ func TestApplyEnvOverrides_ValidValues(t *testing.T) {
 	if !cfg.Enabled {
 		t.Error("Expected Enabled=true")
 	}
+}
+
+func TestApplyEnvOverrides_UnsupportedType(t *testing.T) {
+	type TestCfg struct {
+		Data map[string]string `env:"TEST_MAP"`
+	}
+
+	os.Setenv("TEST_MAP", "invalid")
+	defer os.Unsetenv("TEST_MAP")
+
+	cfg := &TestCfg{Data: make(map[string]string)}
+	applyEnvOverrides(cfg)
+	// 不支持的类型会被静默忽略
 }

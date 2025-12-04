@@ -7,17 +7,17 @@ import (
 )
 
 // applyEnvOverrides 应用环境变量覆盖
-func applyEnvOverrides(v interface{}) error {
+func applyEnvOverrides(v interface{}) {
 	val := reflect.ValueOf(v)
 	if val.Kind() != reflect.Ptr {
-		return nil
+		return
 	}
-	return applyEnvToStruct(val.Elem())
+	applyEnvToStruct(val.Elem())
 }
 
-func applyEnvToStruct(val reflect.Value) error {
+func applyEnvToStruct(val reflect.Value) {
 	if val.Kind() != reflect.Struct {
-		return nil
+		return
 	}
 
 	typ := val.Type()
@@ -32,22 +32,17 @@ func applyEnvToStruct(val reflect.Value) error {
 		envKey := fieldType.Tag.Get("env")
 		if envKey != "" {
 			if envVal := os.Getenv(envKey); envVal != "" {
-				if err := setFieldValue(field, envVal); err != nil {
-					return err
-				}
+				setFieldValue(field, envVal)
 			}
 		}
 
 		if field.Kind() == reflect.Struct {
-			if err := applyEnvToStruct(field); err != nil {
-				return err
-			}
+			applyEnvToStruct(field)
 		}
 	}
-	return nil
 }
 
-func setFieldValue(field reflect.Value, value string) error {
+func setFieldValue(field reflect.Value, value string) {
 	switch field.Kind() {
 	case reflect.String:
 		field.SetString(value)
@@ -60,5 +55,4 @@ func setFieldValue(field reflect.Value, value string) error {
 			field.SetBool(boolVal)
 		}
 	}
-	return nil
 }

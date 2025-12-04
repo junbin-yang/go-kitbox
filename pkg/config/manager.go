@@ -102,10 +102,7 @@ func (cm *ConfigManager) LoadConfig(customPath string) error {
 		}
 
 		// 4. 应用环境变量覆盖
-		if err = applyEnvOverrides(cm.instance); err != nil {
-			cm.loadErr = fmt.Errorf("apply env overrides failed: %w", err)
-			return
-		}
+		applyEnvOverrides(cm.instance)
 
 		// 5. 启动配置监听（如果启用）
 		if cm.enableWatch {
@@ -197,10 +194,7 @@ func (cm *ConfigManager) ReloadConfig() error {
 	}
 
 	// 应用环境变量覆盖
-	if err := applyEnvOverrides(newInstance); err != nil {
-		cm.mu.Unlock()
-		return fmt.Errorf("apply env overrides failed: %w", err)
-	}
+	applyEnvOverrides(newInstance)
 
 	oldInstance := cm.instance
 	cm.instance = newInstance
